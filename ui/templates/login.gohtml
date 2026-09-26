@@ -1,9 +1,9 @@
 {{ define "content" }}
 <form method="post" action="/login" class="flex flex-col gap-5">
     <input type="hidden" name="next" value="{{ .Next }}">
-    <label class="field">Username <input class="input" name="username" value="{{ .Username }}" required autofocus autocomplete="username"></label>
-    <label class="field">Password <input class="input" name="password" type="password" required autocomplete="current-password"></label>
-    <button type="submit" class="btn w-full">Sign in</button>
+    <label class="as-field">Username <input class="as-input" name="username" value="{{ .Username }}" required autofocus autocomplete="username"></label>
+    <label class="as-field">Password <input class="as-input" name="password" type="password" required autocomplete="current-password"></label>
+    <button type="submit" class="as-button w-full">Sign in</button>
 </form>
-{{ if .RegistrationOpen }}<p class="hint"><a href="/register">Create an account</a></p>{{ end }}
+{{ if .RegistrationOpen }}<p class="as-hint"><a href="/register">Create an account</a></p>{{ end }}
 {{ end }}

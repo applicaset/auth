@@ -9,11 +9,11 @@
 <body>
 <main class="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-6 px-4 py-12">
     <h1>{{ .Title }}</h1>
-    {{ if .ErrorMessage }}<p role="alert" class="alert alert-danger">{{ .ErrorMessage }}</p>{{ end }}
-    {{ if .Notice }}<p role="status" class="alert alert-success">{{ .Notice }}</p>{{ end }}
+    {{ if .ErrorMessage }}<p role="alert" class="as-alert variant-danger">{{ .ErrorMessage }}</p>{{ end }}
+    {{ if .Notice }}<p role="status" class="as-alert variant-success">{{ .Notice }}</p>{{ end }}
     {{ template "content" . }}
     {{ if not .HideBackLink }}
-        {{ block "back" . }}<p><a href="/" class="back-link">{{ template "mdi-arrow-left.svg" }}Back to the blog</a></p>{{ end }}
+        {{ block "back" . }}<p><a href="/" class="as-back-link">{{ template "mdi-arrow-left.svg" }}Back to the blog</a></p>{{ end }}
     {{ end }}
 </main>
 </body>
