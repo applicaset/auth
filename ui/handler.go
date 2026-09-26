@@ -16,6 +16,8 @@ import (
 	"github.com/buildset/buildset/pkg/safeurl"
 )
 
+const newUserPath = "/users/new"
+
 // maxFormBytes caps a form submission; these forms are a handful of short fields.
 const maxFormBytes = 16 << 10
 
@@ -73,9 +75,12 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /setup", h.setupSubmit)
 	mux.HandleFunc("GET /login", h.loginForm)
 	mux.HandleFunc("POST /login", h.loginSubmit)
+	mux.HandleFunc("GET /logout", h.logoutForm)
 	mux.HandleFunc("POST /logout", h.logoutSubmit)
 	mux.HandleFunc("GET /register", h.registerForm)
 	mux.HandleFunc("POST /register", h.registerSubmit)
+	mux.HandleFunc("GET "+newUserPath, h.newUserForm)
+	mux.HandleFunc("POST "+newUserPath, h.newUserSubmit)
 	mux.HandleFunc("GET /password", h.passwordForm)
 	mux.HandleFunc("POST /password", h.passwordSubmit)
 }
@@ -99,8 +104,8 @@ func (h *Handler) PasswordURL() string {
 	return "/password"
 }
 
-func (h *Handler) RegisterURL() string {
-	return "/register"
+func (h *Handler) NewUserURL() string {
+	return newUserPath
 }
 
 // parseForm bounds the request body before reading it, so a large upload cannot be turned into

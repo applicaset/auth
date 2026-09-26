@@ -64,18 +64,13 @@ func firstUserHook(
 	})
 }
 
-// registrationPolicy asks the authorization service who may reach the registration form. Public
-// sign-up is a configuration switch; otherwise it takes a permission.
-func registrationPolicy(open bool, client *authzclient.Client) authui.RegistrationPolicy {
-	return authui.RegistrationPolicyFunc(func(ctx context.Context, actorRef string) (bool, error) {
-		if open {
-			return true, nil
-		}
-
-		if actorRef == "" {
-			return false, nil
-		}
-
-		return client.Can(ctx, actorRef, action.UserCreate, action.AnyUser)
-	})
+// registrationPolicy asks the authorization service who may add accounts. Public sign-up is a
+// configuration switch.
+func registrationPolicy(open bool, client *authzclient.Client) authui.SwitchPolicy {
+	return authui.SwitchPolicy{
+		Open: open,
+		CanAddUser: func(ctx context.Context, actorRef string) (bool, error) {
+			return client.Can(ctx, actorRef, action.UserCreate, action.AnyUser)
+		},
+	}
 }

@@ -3,12 +3,7 @@
     <label class="field">Username <input class="input" name="username" value="{{ .Username }}" required autofocus autocomplete="username"></label>
     <label class="field">Display name <input class="input" name="name" value="{{ .Name }}" autocomplete="name"></label>
     <label class="field">Password <input class="input" name="password" type="password" required autocomplete="new-password"></label>
-    <button type="submit" class="btn w-full">{{ if .ForSomeoneElse }}Add user{{ else }}Create account{{ end }}</button>
+    <button type="submit" class="btn w-full">Create account</button>
 </form>
-{{ if .ForSomeoneElse }}
-    <p class="hint">The person will need this password to sign in. They can change it afterwards.</p>
-    <p class="hint"><a href="/admin/users">Back to users</a></p>
-{{ else }}
-    <p class="hint"><a href="/login">Sign in instead</a></p>
-{{ end }}
+<p class="hint"><a href="/login">Sign in instead</a></p>
 {{ end }}

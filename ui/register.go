@@ -7,10 +7,45 @@ import (
 	"github.com/buildset/buildset/auth"
 )
 
-// registrationGate answers 404 when this visitor may not create an account, so a closed instance
-// does not advertise the route. It returns the signed-in visitor, if there is one: an administrator
-// here is adding somebody else's account, not signing themselves up.
-func (h *Handler) registrationGate(w http.ResponseWriter, r *http.Request) (*auth.User, bool) {
+const (
+	registerTitle = "Create an account"
+	newUserTitle  = "New user"
+)
+
+// signUpGate answers 404 when sign-up is closed, so a closed instance does not advertise the route.
+// Someone already signed in has an account and goes home.
+func (h *Handler) signUpGate(w http.ResponseWriter, r *http.Request) bool {
+	_, actor, err := h.currentSession(r)
+	if err != nil && !errors.Is(err, auth.ErrSessionNotFound) {
+		h.renderInternalError(w, r, err, "resolve session")
+
+		return false
+	}
+
+	if actor != nil {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+
+		return false
+	}
+
+	open, err := h.policy.SignUpOpen(r.Context())
+	if err != nil {
+		h.renderInternalError(w, r, err, "check registration policy")
+
+		return false
+	}
+
+	if !open {
+		h.renderError(w, r, http.StatusNotFound, "There is nothing here.")
+
+		return false
+	}
+
+	return true
+}
+
+// addUserGate answers 404 to anyone who may not add accounts, for the same reason as signUpGate.
+func (h *Handler) addUserGate(w http.ResponseWriter, r *http.Request) (*auth.User, bool) {
 	_, actor, err := h.currentSession(r)
 	if err != nil && !errors.Is(err, auth.ErrSessionNotFound) {
 		h.renderInternalError(w, r, err, "resolve session")
@@ -18,12 +53,13 @@ func (h *Handler) registrationGate(w http.ResponseWriter, r *http.Request) (*aut
 		return nil, false
 	}
 
-	var actorRef string
-	if actor != nil {
-		actorRef = actor.Ref()
+	if actor == nil {
+		http.Redirect(w, r, "/login?next="+newUserPath, http.StatusSeeOther)
+
+		return nil, false
 	}
 
-	allowed, err := h.policy.MayRegister(r.Context(), actorRef)
+	allowed, err := h.policy.MayAddUser(r.Context(), actor.Ref())
 	if err != nil {
 		h.renderInternalError(w, r, err, "check registration policy")
 
@@ -40,69 +76,20 @@ func (h *Handler) registrationGate(w http.ResponseWriter, r *http.Request) (*aut
 }
 
 func (h *Handler) registerForm(w http.ResponseWriter, r *http.Request) {
-	actor, ok := h.registrationGate(w, r)
-	if !ok {
+	if !h.signUpGate(w, r) {
 		return
 	}
 
-	h.render(w, r, http.StatusOK, "register.gohtml", pageData{
-		Title:          registerTitle(actor),
-		ForSomeoneElse: actor != nil,
-	})
-}
-
-func registerTitle(actor *auth.User) string {
-	if actor != nil {
-		return "Add a user"
-	}
-
-	return "Create an account"
+	h.render(w, r, http.StatusOK, "register.gohtml", pageData{Title: registerTitle})
 }
 
 func (h *Handler) registerSubmit(w http.ResponseWriter, r *http.Request) {
-	actor, ok := h.registrationGate(w, r)
+	if !h.signUpGate(w, r) {
+		return
+	}
+
+	user, ok := h.createUser(w, r, "register.gohtml", registerTitle)
 	if !ok {
-		return
-	}
-
-	if !h.parseForm(w, r) {
-		return
-	}
-
-	req := auth.RegisterRequest{
-		Username: r.PostFormValue("username"),
-		Name:     r.PostFormValue("name"),
-		Password: r.PostFormValue("password"),
-	}
-
-	user, err := h.service.Register(r.Context(), req)
-	if err != nil {
-		if !isValidationError(err) {
-			h.renderInternalError(w, r, err, "register user")
-
-			return
-		}
-
-		status := http.StatusBadRequest
-		if errors.Is(err, auth.ErrUsernameTaken) {
-			status = http.StatusConflict
-		}
-
-		h.render(w, r, status, "register.gohtml", pageData{
-			Title:          registerTitle(actor),
-			ErrorMessage:   userFacingError(err, "That account could not be created."),
-			Username:       req.Username,
-			Name:           req.Name,
-			ForSomeoneElse: actor != nil,
-		})
-
-		return
-	}
-
-	// Somebody adding an account for another person must stay signed in as themselves.
-	if actor != nil {
-		http.Redirect(w, r, "/admin/users/"+user.ID, http.StatusSeeOther)
-
 		return
 	}
 
@@ -113,4 +100,69 @@ func (h *Handler) registerSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func (h *Handler) newUserForm(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.addUserGate(w, r); !ok {
+		return
+	}
+
+	h.render(w, r, http.StatusOK, "new_user.gohtml", pageData{Title: newUserTitle})
+}
+
+// Adding somebody else's account leaves the browser signed in as the person who added it.
+func (h *Handler) newUserSubmit(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.addUserGate(w, r); !ok {
+		return
+	}
+
+	user, ok := h.createUser(w, r, "new_user.gohtml", newUserTitle)
+	if !ok {
+		return
+	}
+
+	http.Redirect(w, r, "/admin/users/"+user.ID, http.StatusSeeOther)
+}
+
+// createUser registers the account in the submitted form, re-rendering page with the problem when
+// the input is at fault.
+func (h *Handler) createUser(
+	w http.ResponseWriter,
+	r *http.Request,
+	page, title string,
+) (*auth.User, bool) {
+	if !h.parseForm(w, r) {
+		return nil, false
+	}
+
+	req := auth.RegisterRequest{
+		Username: r.PostFormValue("username"),
+		Name:     r.PostFormValue("name"),
+		Password: r.PostFormValue("password"),
+	}
+
+	user, err := h.service.Register(r.Context(), req)
+	if err == nil {
+		return user, true
+	}
+
+	if !isValidationError(err) {
+		h.renderInternalError(w, r, err, "register user")
+
+		return nil, false
+	}
+
+	status := http.StatusBadRequest
+	if errors.Is(err, auth.ErrUsernameTaken) {
+		status = http.StatusConflict
+	}
+
+	h.render(w, r, status, page, pageData{
+		Title:        title,
+		ErrorMessage: userFacingError(err, "That account could not be created."),
+		Username:     req.Username,
+		Name:         req.Name,
+	})
+
+	return nil, false
 }

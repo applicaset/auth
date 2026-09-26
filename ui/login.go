@@ -67,7 +67,7 @@ func (h *Handler) loginSubmit(w http.ResponseWriter, r *http.Request) {
 
 // A policy that cannot answer hides the sign-up link rather than failing the page.
 func (h *Handler) anonymousMayRegister(r *http.Request) bool {
-	allowed, err := h.policy.MayRegister(r.Context(), "")
+	allowed, err := h.policy.SignUpOpen(r.Context())
 	if err != nil {
 		h.logger.WarnContext(r.Context(), "check registration policy", slog.Any("error", err))
 
@@ -77,8 +77,18 @@ func (h *Handler) anonymousMayRegister(r *http.Request) bool {
 	return allowed
 }
 
-// logoutSubmit is POST only. A logout reachable by GET can be triggered by any image tag on any
-// other site.
+// logoutForm only asks. Signing out stays POST only, because a logout reachable by GET can be
+// triggered by any image tag on any other site.
+func (h *Handler) logoutForm(w http.ResponseWriter, r *http.Request) {
+	if h.sessionToken(r) == "" {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+
+		return
+	}
+
+	h.render(w, r, http.StatusOK, "logout.gohtml", pageData{Title: "Sign out", HideBackLink: true})
+}
+
 func (h *Handler) logoutSubmit(w http.ResponseWriter, r *http.Request) {
 	if token := h.sessionToken(r); token != "" {
 		if err := h.service.RevokeSession(r.Context(), token); err != nil {

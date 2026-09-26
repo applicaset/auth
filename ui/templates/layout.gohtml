@@ -12,7 +12,9 @@
     {{ if .ErrorMessage }}<p role="alert" class="alert alert-danger">{{ .ErrorMessage }}</p>{{ end }}
     {{ if .Notice }}<p role="status" class="alert alert-success">{{ .Notice }}</p>{{ end }}
     {{ template "content" . }}
-    <p class="hint"><a href="/">Back to the blog</a></p>
+    {{ if not .HideBackLink }}
+        {{ block "back" . }}<p><a href="/" class="back-link">{{ template "mdi-arrow-left.svg" }}Back to the blog</a></p>{{ end }}
+    {{ end }}
 </main>
 </body>
 </html>

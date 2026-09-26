@@ -11,7 +11,7 @@ import (
 	"github.com/buildset/buildset/pkg/asset"
 )
 
-//go:embed templates/*.gohtml
+//go:embed templates/*.gohtml templates/icons/*.svg
 var templateFiles embed.FS
 
 //go:embed static/style.min.css
@@ -35,8 +35,8 @@ type pageData struct {
 	Username         string
 	Name             string
 	RegistrationOpen bool
-	// ForSomeoneElse marks a registration form being used to add another person's account.
-	ForSomeoneElse bool
+	// HideBackLink drops the link home from a page that already offers a way out.
+	HideBackLink bool
 }
 
 // One template set per page, each with its own copy of the layout, because every page defines the
@@ -46,13 +46,20 @@ func parseTemplates() (map[string]*template.Template, error) {
 		"setup.gohtml",
 		"login.gohtml",
 		"register.gohtml",
+		"new_user.gohtml",
 		"password.gohtml",
+		"logout.gohtml",
 		"error.gohtml",
 	}
 	pages := make(map[string]*template.Template, len(names))
 
 	for _, name := range names {
-		page, err := template.ParseFS(templateFiles, "templates/layout.gohtml", "templates/"+name)
+		page, err := template.ParseFS(
+			templateFiles,
+			"templates/layout.gohtml",
+			"templates/icons/*.svg",
+			"templates/"+name,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("parse template %s: %w", name, err)
 		}

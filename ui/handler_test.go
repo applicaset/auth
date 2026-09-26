@@ -51,8 +51,18 @@ type harness struct {
 	client *http.Client
 	db     *sql.DB
 	hook   *recordingHook
-	// registerable decides what the registration policy answers.
-	registerable func(actorRef string) bool
+	// signUpOpen and mayAddUser decide what the registration policy answers.
+	signUpOpen bool
+	mayAddUser func(actorRef string) bool
+}
+
+// testPolicy reads the harness on every call, so a test can change the answer after setup.
+type testPolicy struct{ h *harness }
+
+func (p testPolicy) SignUpOpen(context.Context) (bool, error) { return p.h.signUpOpen, nil }
+
+func (p testPolicy) MayAddUser(_ context.Context, actorRef string) (bool, error) {
+	return p.h.mayAddUser(actorRef), nil
 }
 
 func newHarness(t *testing.T) *harness {
@@ -84,15 +94,16 @@ func newHarness(t *testing.T) *harness {
 	)
 	require.NoError(t, err)
 
-	h := &harness{db: db, hook: hook, registerable: func(string) bool { return true }}
+	h := &harness{
+		db:         db,
+		hook:       hook,
+		signUpOpen: true,
+		mayAddUser: func(string) bool { return true },
+	}
 
 	// Who may register is decided by the composition root, not by this package, so the test
 	// supplies the decision the same way.
-	policy := ui.RegistrationPolicyFunc(func(_ context.Context, actorRef string) (bool, error) {
-		return h.registerable(actorRef), nil
-	})
-
-	handler, err := ui.NewHandler(service, policy, ui.Config{
+	handler, err := ui.NewHandler(service, testPolicy{h: h}, ui.Config{
 		SessionCookieName: sessionCookieName,
 		SecureCookies:     false,
 	}, slog.New(slog.DiscardHandler))
@@ -291,6 +302,27 @@ func TestLogoutRemovesTheSession(t *testing.T) {
 	assert.Empty(t, h.sessionCookie(t))
 }
 
+// The page only asks; the session survives until the form is posted.
+func TestLogoutAsksFirst(t *testing.T) {
+	h := newHarness(t)
+	require.Equal(
+		t,
+		http.StatusSeeOther,
+		h.get(t, "/logout").StatusCode,
+		"no session, nothing to ask",
+	)
+
+	require.Equal(t, http.StatusSeeOther, h.post(t, "/setup", setupForm()).StatusCode)
+
+	page := h.get(t, "/logout")
+	require.Equal(t, http.StatusOK, page.StatusCode)
+	body, err := io.ReadAll(page.Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `<form method="post" action="/logout"`)
+	assert.NotContains(t, string(body), "Back to the blog", "Cancel is the one way out")
+	assert.Equal(t, 1, h.countSessions(t))
+}
+
 func TestChangePasswordRotatesTheHashAndKeepsOnlyTheCurrentSession(t *testing.T) {
 	h := newHarness(t)
 	require.Equal(t, http.StatusSeeOther, h.post(t, "/setup", setupForm()).StatusCode)
@@ -343,10 +375,9 @@ func newClient(t *testing.T, h *harness) *harness {
 	require.NoError(t, err)
 
 	return &harness{
-		server:       h.server,
-		db:           h.db,
-		hook:         h.hook,
-		registerable: h.registerable,
+		server: h.server,
+		db:     h.db,
+		hook:   h.hook,
 		client: &http.Client{
 			Jar:           jar,
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
@@ -356,20 +387,48 @@ func newClient(t *testing.T, h *harness) *harness {
 
 // With public sign-up closed, the form is not merely refused but absent, so a stranger cannot tell
 // that registration exists here at all.
-func TestRegistrationIsHiddenFromThoseWhoMayNotUseIt(t *testing.T) {
+func TestClosedSignUpIsHidden(t *testing.T) {
+	h := newHarness(t)
+	h.signUpOpen = false
+
+	assert.Equal(t, http.StatusNotFound, h.get(t, "/register").StatusCode)
+	assert.Equal(t, http.StatusNotFound, h.post(t, "/register", url.Values{
+		"username": {"mallory"}, "password": {"a good long secret"},
+	}).StatusCode)
+}
+
+func TestSignedInVisitorIsSentHomeFromSignUp(t *testing.T) {
+	h := newHarness(t)
+	require.Equal(t, http.StatusSeeOther, h.post(t, "/setup", setupForm()).StatusCode)
+
+	response := h.get(t, "/register")
+
+	require.Equal(t, http.StatusSeeOther, response.StatusCode)
+	assert.Equal(t, "/", response.Header.Get("Location"))
+}
+
+// Open sign-up lets anyone make their own account, not accounts for other people.
+func TestAddingUsersTakesThePermissionEvenWithSignUpOpen(t *testing.T) {
 	h := newHarness(t)
 	require.Equal(t, http.StatusSeeOther, h.post(t, "/setup", setupForm()).StatusCode)
 
 	adminRef := h.hook.refs[0]
-	h.registerable = func(actorRef string) bool { return actorRef == adminRef }
+	h.mayAddUser = func(actorRef string) bool { return actorRef == adminRef }
 
 	stranger := newClient(t, h)
-	assert.Equal(t, http.StatusNotFound, stranger.get(t, "/register").StatusCode)
-	assert.Equal(t, http.StatusNotFound, stranger.post(t, "/register", url.Values{
+	response := stranger.get(t, "/users/new")
+	require.Equal(t, http.StatusSeeOther, response.StatusCode)
+	assert.Equal(t, "/login?next=/users/new", response.Header.Get("Location"))
+
+	require.Equal(t, http.StatusSeeOther, stranger.post(t, "/register", url.Values{
+		"username": {"grace"}, "password": {"another good secret"},
+	}).StatusCode)
+	assert.Equal(t, http.StatusNotFound, stranger.get(t, "/users/new").StatusCode)
+	assert.Equal(t, http.StatusNotFound, stranger.post(t, "/users/new", url.Values{
 		"username": {"mallory"}, "password": {"a good long secret"},
 	}).StatusCode)
 
-	assert.Equal(t, http.StatusOK, h.get(t, "/register").StatusCode)
+	assert.Equal(t, http.StatusOK, h.get(t, "/users/new").StatusCode)
 }
 
 // Adding somebody else's account must not swap the browser over to it.
@@ -379,7 +438,7 @@ func TestAddingAnAccountForSomeoneElseKeepsYouSignedIn(t *testing.T) {
 
 	before := h.sessionCookie(t)
 
-	response := h.post(t, "/register", url.Values{
+	response := h.post(t, "/users/new", url.Values{
 		"username": {"grace"}, "name": {"Grace"}, "password": {"another good secret"},
 	})
 	require.Equal(t, http.StatusSeeOther, response.StatusCode)
