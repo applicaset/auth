@@ -1,9 +1,9 @@
 {{ define "content" }}
-<p>No account exists yet. The account you create here becomes the administrator.</p>
-<form method="post" action="/setup">
-    <p><label>Username <input name="username" value="{{ .Username }}" required autofocus autocomplete="username"></label></p>
-    <p><label>Display name <input name="name" value="{{ .Name }}" autocomplete="name"></label></p>
-    <p><label>Password <input name="password" type="password" required autocomplete="new-password"></label></p>
-    <p><button type="submit">Create administrator</button></p>
+<p class="hint">No account exists yet. The account you create here becomes the administrator.</p>
+<form method="post" action="/setup" class="flex flex-col gap-5">
+    <label class="field">Username <input class="input" name="username" value="{{ .Username }}" required autofocus autocomplete="username"></label>
+    <label class="field">Display name <input class="input" name="name" value="{{ .Name }}" autocomplete="name"></label>
+    <label class="field">Password <input class="input" name="password" type="password" required autocomplete="new-password"></label>
+    <button type="submit" class="btn w-full">Create administrator</button>
 </form>
 {{ end }}

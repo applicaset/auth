@@ -7,14 +7,27 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+
+	"github.com/buildset/buildset/pkg/asset"
 )
 
 //go:embed templates/*.gohtml
 var templateFiles embed.FS
 
+//go:embed static/style.min.css
+var stylesheetContent []byte
+
+// The path sits under /auth so a gateway can route it to this service by prefix.
+var stylesheet = asset.New(
+	"/auth/static/style.min.css",
+	"text/css; charset=utf-8",
+	stylesheetContent,
+)
+
 // pageData is what every template in this package receives.
 type pageData struct {
 	Title            string
+	StylesheetURL    string
 	ErrorMessage     string
 	Notice           string
 	Message          string
@@ -66,6 +79,8 @@ func (h *Handler) render(
 
 		return
 	}
+
+	data.StylesheetURL = stylesheet.URL
 
 	var buf bytes.Buffer
 

@@ -6,12 +6,14 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"html"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -391,4 +393,19 @@ func TestAddingAnAccountForSomeoneElseKeepsYouSignedIn(t *testing.T) {
 
 	// Only the account created at setup went through the first-user hook.
 	assert.Len(t, h.hook.refs, 1)
+}
+
+func TestPagesLinkTheStylesheet(t *testing.T) {
+	h := newHarness(t)
+
+	page := h.get(t, "/login")
+	body, err := io.ReadAll(page.Body)
+	require.NoError(t, err)
+
+	href := regexp.MustCompile(`<link rel="stylesheet" href="([^"]+)">`).FindSubmatch(body)
+	require.NotNil(t, href, "the page must link a stylesheet")
+
+	stylesheet := h.get(t, html.UnescapeString(string(href[1])))
+	require.Equal(t, http.StatusOK, stylesheet.StatusCode)
+	assert.Equal(t, "text/css; charset=utf-8", stylesheet.Header.Get("Content-Type"))
 }

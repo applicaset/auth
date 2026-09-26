@@ -4,12 +4,15 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ .Title }}</title>
+    <link rel="stylesheet" href="{{ .StylesheetURL }}">
 </head>
 <body>
-<h1>{{ .Title }}</h1>
-{{ if .ErrorMessage }}<p role="alert"><strong>{{ .ErrorMessage }}</strong></p>{{ end }}
-{{ if .Notice }}<p role="status">{{ .Notice }}</p>{{ end }}
-{{ template "content" . }}
-<p><a href="/">Back to the blog</a></p>
+<main class="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-6 px-4 py-12">
+    <h1>{{ .Title }}</h1>
+    {{ if .ErrorMessage }}<p role="alert" class="alert alert-danger">{{ .ErrorMessage }}</p>{{ end }}
+    {{ if .Notice }}<p role="status" class="alert alert-success">{{ .Notice }}</p>{{ end }}
+    {{ template "content" . }}
+    <p class="hint"><a href="/">Back to the blog</a></p>
+</main>
 </body>
 </html>

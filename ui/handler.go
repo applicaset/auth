@@ -68,6 +68,7 @@ func NewHandler(
 // Register mounts auth's pages at top-level paths, so moving auth to its own host later is a
 // configuration change and not a change to any link.
 func (h *Handler) Register(mux *http.ServeMux) {
+	mux.Handle("GET "+stylesheet.Path, stylesheet)
 	mux.HandleFunc("GET /setup", h.setupForm)
 	mux.HandleFunc("POST /setup", h.setupSubmit)
 	mux.HandleFunc("GET /login", h.loginForm)
