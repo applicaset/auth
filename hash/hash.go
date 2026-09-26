@@ -7,9 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
-// MinPasswordLength is the shortest password accepted, in bytes.
+// MinPasswordLength is the shortest password accepted, in characters.
 //
 // TODO: length alone is weak. NIST SP 800-63B section 5.1.1.2 asks for a breached-password
 // blocklist, which needs a data source this project does not have yet.
@@ -18,7 +19,7 @@ const MinPasswordLength = 8
 var (
 	ErrMismatch         = errors.New("password does not match hash")
 	ErrUnknownAlgorithm = errors.New("unknown password hash algorithm")
-	ErrPasswordTooShort = fmt.Errorf("password must be at least %d bytes", MinPasswordLength)
+	ErrPasswordTooShort = fmt.Errorf("password must be at least %d characters", MinPasswordLength)
 	ErrPasswordTooLong  = errors.New("password is too long for the hash algorithm")
 
 	errDuplicateIdentifier = errors.New("hash identifier is claimed twice")
@@ -63,7 +64,7 @@ func NewRegistry(preferred Algorithm, others ...Algorithm) (*Registry, error) {
 }
 
 func (r *Registry) Hash(password string) (string, error) {
-	if len(password) < MinPasswordLength {
+	if utf8.RuneCountInString(password) < MinPasswordLength {
 		return "", ErrPasswordTooShort
 	}
 

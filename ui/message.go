@@ -14,9 +14,11 @@ func userFacingError(err error, fallback string) string {
 	case errors.Is(err, auth.ErrUsernameTaken):
 		return "That username is already taken."
 	case errors.Is(err, auth.ErrInvalidUsername),
-		errors.Is(err, hash.ErrPasswordTooShort),
-		errors.Is(err, hash.ErrPasswordTooLong):
+		errors.Is(err, hash.ErrPasswordTooShort):
 		return err.Error()
+	case errors.Is(err, hash.ErrPasswordTooLong):
+		// The wrapped detail is a byte limit, which means nothing to someone typing a password.
+		return "That password is too long."
 	case errors.Is(err, auth.ErrInvalidCredentials):
 		return auth.ErrInvalidCredentials.Error()
 	default:

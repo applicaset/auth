@@ -99,6 +99,10 @@ func TestRegistryRejectsBadPasswordLengths(t *testing.T) {
 	_, err := registry.Hash(strings.Repeat("a", hash.MinPasswordLength-1))
 	require.ErrorIs(t, err, hash.ErrPasswordTooShort)
 
+	// Enough bytes but too few characters: each of these letters is two bytes in UTF-8.
+	_, err = registry.Hash(strings.Repeat("ش", hash.MinPasswordLength-1))
+	require.ErrorIs(t, err, hash.ErrPasswordTooShort)
+
 	// bcrypt truncates past 72 bytes, which would let a shorter password unlock the account.
 	_, err = registry.Hash(strings.Repeat("a", hash.MaxBcryptPasswordLength+1))
 	require.ErrorIs(t, err, hash.ErrPasswordTooLong)
