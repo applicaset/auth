@@ -1,4 +1,4 @@
 @import "tailwindcss" source(none);
-@import "../../../../pkg/ui/theme.css";
+@import "@buildset/ui/theme.css";
 
 @source "../../templates";

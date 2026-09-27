@@ -1,0 +1,11 @@
+{
+    "name": "@buildset/auth",
+    "private": true,
+    "scripts": {
+        "build:css": "tailwindcss -i ./ui/assets/styles/main.css -o ./ui/static/style.min.css --minify"
+    },
+    "devDependencies": {
+        "@buildset/ui": "file:../ui",
+        "@tailwindcss/cli": "^4.3.3"
+    }
+}

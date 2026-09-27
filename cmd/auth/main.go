@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/buildset/buildset/app/authapp"
+	authapp "github.com/buildset/buildset/auth/app"
 	"github.com/buildset/buildset/pkg/serve"
 )
 

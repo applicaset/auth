@@ -1,7 +1,7 @@
-// Package authapp is the composition root of the identity service running on its own. It serves the
+// Package app is the composition root of the identity service running on its own. It serves the
 // sign-in pages and the small API the site calls on one port. Credential operations are reachable
 // only from the pages, so nothing on the network can create a session or change a password.
-package authapp
+package app
 
 import (
 	"context"
