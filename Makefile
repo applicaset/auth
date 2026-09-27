@@ -36,8 +36,8 @@ test: ## Run the tests
 .which-npm:
 	@which $(NPM_CMD) > /dev/null || (echo "Install Node.js from https://nodejs.org/en/download" && exit 1)
 
-.PHONY: npm-install
-npm-install: .which-npm ## Install the stylesheet build tools
+.PHONY: dep
+dep: .which-npm ## Install the stylesheet build tools
 	$(NPM_CMD) install
 
 # The built stylesheets are committed and embedded, so go build alone needs no Node.
