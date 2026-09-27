@@ -4,6 +4,8 @@ GO_CMD?=go
 
 GOLANGCI_LINT_CMD?=$(GO_CMD) tool golangci-lint
 
+GOVULNCHECK_CMD?=$(GO_CMD) tool govulncheck
+
 .DEFAULT_GOAL := .default
 
 .default: format build lint test
@@ -25,6 +27,7 @@ format: ## Format the code and tidy go.mod
 .PHONY: lint
 lint: ## Run the linters
 	$(GOLANGCI_LINT_CMD) run ./...
+	$(GOVULNCHECK_CMD) ./...
 
 .PHONY: test
 test: ## Run the tests
