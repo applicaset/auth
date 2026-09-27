@@ -1,9 +1,10 @@
 {{ define "content" }}
 <form method="post" action="/register" class="flex flex-col gap-5">
+    <input type="hidden" name="next" value="{{ .Next }}">
     <label class="as-field">Username <input class="as-input" name="username" value="{{ .Username }}" required autofocus autocomplete="username"></label>
     <label class="as-field">Display name <input class="as-input" name="name" value="{{ .Name }}" autocomplete="name"></label>
     <label class="as-field">Password <input class="as-input" name="password" type="password" required autocomplete="new-password"></label>
     <button type="submit" class="as-button w-full">Create account</button>
 </form>
-<p class="as-hint"><a href="/login">Sign in instead</a></p>
+<p class="as-hint"><a href="/login?next={{ .Next }}">Sign in instead</a></p>
 {{ end }}

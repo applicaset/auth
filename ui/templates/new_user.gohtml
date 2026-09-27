@@ -1,5 +1,6 @@
 {{ define "content" }}
 <form method="post" action="/users/new" class="flex flex-col gap-5">
+    <input type="hidden" name="next" value="{{ .Next }}">
     <label class="as-field">Username <input class="as-input" name="username" value="{{ .Username }}" required autofocus autocomplete="off"></label>
     <label class="as-field">Display name <input class="as-input" name="name" value="{{ .Name }}" autocomplete="off"></label>
     <label class="as-field">Password <input class="as-input" name="password" type="password" required autocomplete="new-password"></label>
@@ -7,5 +8,3 @@
 </form>
 <p class="as-hint">The person will need this password to sign in. They can change it afterwards.</p>
 {{ end }}
-
-{{ define "back" }}<p><a href="/admin/users" class="as-back-link">{{ template "mdi-arrow-left.svg" }}Back to users</a></p>{{ end }}

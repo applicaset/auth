@@ -23,7 +23,7 @@ func (h *Handler) signUpGate(w http.ResponseWriter, r *http.Request) bool {
 	}
 
 	if actor != nil {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		http.Redirect(w, r, nextTarget(r), http.StatusSeeOther)
 
 		return false
 	}
@@ -54,7 +54,7 @@ func (h *Handler) addUserGate(w http.ResponseWriter, r *http.Request) (*auth.Use
 	}
 
 	if actor == nil {
-		http.Redirect(w, r, "/login?next="+newUserPath, http.StatusSeeOther)
+		http.Redirect(w, r, h.LoginURL(r.URL.RequestURI()), http.StatusSeeOther)
 
 		return nil, false
 	}
@@ -80,7 +80,10 @@ func (h *Handler) registerForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.render(w, r, http.StatusOK, "register.gohtml", pageData{Title: registerTitle})
+	h.render(w, r, http.StatusOK, "register.gohtml", pageData{
+		Title: registerTitle,
+		Next:  nextTarget(r),
+	})
 }
 
 func (h *Handler) registerSubmit(w http.ResponseWriter, r *http.Request) {
@@ -99,7 +102,7 @@ func (h *Handler) registerSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, nextTarget(r), http.StatusSeeOther)
 }
 
 func (h *Handler) newUserForm(w http.ResponseWriter, r *http.Request) {
@@ -107,7 +110,10 @@ func (h *Handler) newUserForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.render(w, r, http.StatusOK, "new_user.gohtml", pageData{Title: newUserTitle})
+	h.render(w, r, http.StatusOK, "new_user.gohtml", pageData{
+		Title: newUserTitle,
+		Next:  nextTarget(r),
+	})
 }
 
 // Adding somebody else's account leaves the browser signed in as the person who added it.
@@ -116,12 +122,11 @@ func (h *Handler) newUserSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, ok := h.createUser(w, r, "new_user.gohtml", newUserTitle)
-	if !ok {
+	if _, ok := h.createUser(w, r, "new_user.gohtml", newUserTitle); !ok {
 		return
 	}
 
-	http.Redirect(w, r, "/admin/users/"+user.ID, http.StatusSeeOther)
+	http.Redirect(w, r, nextTarget(r), http.StatusSeeOther)
 }
 
 // createUser registers the account in the submitted form, re-rendering page with the problem when
@@ -160,6 +165,7 @@ func (h *Handler) createUser(
 	h.render(w, r, status, page, pageData{
 		Title:        title,
 		ErrorMessage: userFacingError(err, "That account could not be created."),
+		Next:         nextTarget(r),
 		Username:     req.Username,
 		Name:         req.Name,
 	})

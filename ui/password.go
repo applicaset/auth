@@ -3,6 +3,7 @@ package ui
 import (
 	"errors"
 	"net/http"
+	"net/url"
 
 	"github.com/buildset/buildset/auth"
 )
@@ -12,7 +13,7 @@ func (h *Handler) passwordForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := pageData{Title: "Change your password"}
+	data := pageData{Title: "Change your password", Next: nextTarget(r)}
 	if r.URL.Query().Has("changed") {
 		data.Notice = "Your password has been changed."
 	}
@@ -52,12 +53,18 @@ func (h *Handler) passwordSubmit(w http.ResponseWriter, r *http.Request) {
 		h.render(w, r, http.StatusBadRequest, "password.gohtml", pageData{
 			Title:        "Change your password",
 			ErrorMessage: message,
+			Next:         nextTarget(r),
 		})
 
 		return
 	}
 
-	http.Redirect(w, r, "/password?changed", http.StatusSeeOther)
+	http.Redirect(
+		w,
+		r,
+		"/password?changed&next="+url.QueryEscape(nextTarget(r)),
+		http.StatusSeeOther,
+	)
 }
 
 // requireSession sends an unauthenticated visitor to the login page and reports whether the caller

@@ -69,7 +69,7 @@ func LoadConfig(ctx context.Context) (*Config, error) {
 		Database:         storage.Load(),
 		BcryptCost:       env.GetInt("AUTH_BCRYPT_COST", 12),
 		SessionTTL:       env.GetDuration("AUTH_SESSION_TTL", 14*24*time.Hour),
-		RegistrationOpen: env.GetBool("AUTH_REGISTRATION_OPEN", false),
+		RegistrationOpen: env.GetBool("AUTH_REGISTRATION_OPEN", true),
 		AdminRole:        env.GetString("AUTH_ADMIN_ROLE", "admin"),
 		AuthzURL:         authzURL,
 		HTTPTimeout:      env.GetDuration("HTTP_TIMEOUT", 5*time.Second),

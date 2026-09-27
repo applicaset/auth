@@ -7,6 +7,8 @@ import (
 	"github.com/buildset/buildset/auth"
 )
 
+const setupTitle = "Set up"
+
 // setupGate closes the first-run pages for good once a user exists. It answers 404 rather than 403
 // so a running instance does not advertise that a setup route was ever there.
 func (h *Handler) setupGate(w http.ResponseWriter, r *http.Request) bool {
@@ -31,7 +33,7 @@ func (h *Handler) setupForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.render(w, r, http.StatusOK, "setup.gohtml", pageData{Title: "Set up this blog"})
+	h.render(w, r, http.StatusOK, "setup.gohtml", pageData{Title: setupTitle, Next: nextTarget(r)})
 }
 
 func (h *Handler) setupSubmit(w http.ResponseWriter, r *http.Request) {
@@ -61,8 +63,9 @@ func (h *Handler) setupSubmit(w http.ResponseWriter, r *http.Request) {
 
 		// The submitted password is never echoed back into the form.
 		h.render(w, r, http.StatusBadRequest, "setup.gohtml", pageData{
-			Title:        "Set up this blog",
+			Title:        setupTitle,
 			ErrorMessage: userFacingError(err, "That account could not be created."),
+			Next:         nextTarget(r),
 			Username:     req.Username,
 			Name:         req.Name,
 		})
@@ -76,5 +79,5 @@ func (h *Handler) setupSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, nextTarget(r), http.StatusSeeOther)
 }

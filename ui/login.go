@@ -80,16 +80,26 @@ func (h *Handler) anonymousMayRegister(r *http.Request) bool {
 // logoutForm only asks. Signing out stays POST only, because a logout reachable by GET can be
 // triggered by any image tag on any other site.
 func (h *Handler) logoutForm(w http.ResponseWriter, r *http.Request) {
+	next := nextTarget(r)
+
 	if h.sessionToken(r) == "" {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		http.Redirect(w, r, next, http.StatusSeeOther)
 
 		return
 	}
 
-	h.render(w, r, http.StatusOK, "logout.gohtml", pageData{Title: "Sign out", HideBackLink: true})
+	h.render(w, r, http.StatusOK, "logout.gohtml", pageData{
+		Title:        "Sign out",
+		Next:         next,
+		HideBackLink: true,
+	})
 }
 
 func (h *Handler) logoutSubmit(w http.ResponseWriter, r *http.Request) {
+	if !h.parseForm(w, r) {
+		return
+	}
+
 	if token := h.sessionToken(r); token != "" {
 		if err := h.service.RevokeSession(r.Context(), token); err != nil {
 			h.renderInternalError(w, r, err, "revoke session")
@@ -99,5 +109,5 @@ func (h *Handler) logoutSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.clearSessionCookie(w)
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, nextTarget(r), http.StatusSeeOther)
 }

@@ -233,6 +233,22 @@ func TestSetupRunsOnceAndMakesTheFirstUserKnownToTheHook(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, h.post(t, "/setup", setupForm()).StatusCode)
 }
 
+// More than one site can sit behind these pages, so each tells them where to send the visitor back.
+func TestSetupReturnsToTheSiteThatSentTheVisitor(t *testing.T) {
+	h := newHarness(t)
+
+	form := setupForm()
+	form.Set("next", "/finset/")
+
+	response := h.post(t, "/setup", form)
+	require.Equal(t, http.StatusSeeOther, response.StatusCode)
+	assert.Equal(t, "/finset/", response.Header.Get("Location"))
+
+	response = h.post(t, "/logout", url.Values{"next": {"https://evil.example/"}})
+	require.Equal(t, http.StatusSeeOther, response.StatusCode)
+	assert.Equal(t, "/", response.Header.Get("Location"), "a foreign target collapses to home")
+}
+
 func TestSetupRollsBackWhenTheHookFails(t *testing.T) {
 	h := newHarness(t)
 	h.hook.err = errAuthzUnreachable
@@ -319,7 +335,7 @@ func TestLogoutAsksFirst(t *testing.T) {
 	body, err := io.ReadAll(page.Body)
 	require.NoError(t, err)
 	assert.Contains(t, string(body), `<form method="post" action="/logout"`)
-	assert.NotContains(t, string(body), "Back to the blog", "Cancel is the one way out")
+	assert.NotContains(t, string(body), "as-back-link", "Cancel is the one way out")
 	assert.Equal(t, 1, h.countSessions(t))
 }
 
@@ -418,7 +434,7 @@ func TestAddingUsersTakesThePermissionEvenWithSignUpOpen(t *testing.T) {
 	stranger := newClient(t, h)
 	response := stranger.get(t, "/users/new")
 	require.Equal(t, http.StatusSeeOther, response.StatusCode)
-	assert.Equal(t, "/login?next=/users/new", response.Header.Get("Location"))
+	assert.Equal(t, "/login?next=%2Fusers%2Fnew", response.Header.Get("Location"))
 
 	require.Equal(t, http.StatusSeeOther, stranger.post(t, "/register", url.Values{
 		"username": {"grace"}, "password": {"another good secret"},
@@ -440,9 +456,10 @@ func TestAddingAnAccountForSomeoneElseKeepsYouSignedIn(t *testing.T) {
 
 	response := h.post(t, "/users/new", url.Values{
 		"username": {"grace"}, "name": {"Grace"}, "password": {"another good secret"},
+		"next": {"/admin/users"},
 	})
 	require.Equal(t, http.StatusSeeOther, response.StatusCode)
-	assert.Contains(t, response.Header.Get("Location"), "/admin/users/")
+	assert.Equal(t, "/admin/users", response.Header.Get("Location"))
 
 	assert.Equal(t, before, h.sessionCookie(t), "the browser must still be the administrator")
 

@@ -5,5 +5,5 @@
     <label class="as-field">Password <input class="as-input" name="password" type="password" required autocomplete="current-password"></label>
     <button type="submit" class="as-button w-full">Sign in</button>
 </form>
-{{ if .RegistrationOpen }}<p class="as-hint"><a href="/register">Create an account</a></p>{{ end }}
+{{ if .RegistrationOpen }}<p class="as-hint"><a href="/register?next={{ .Next }}">Create an account</a></p>{{ end }}
 {{ end }}

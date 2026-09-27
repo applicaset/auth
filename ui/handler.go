@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/url"
 
 	"github.com/buildset/buildset/auth"
 	"github.com/buildset/buildset/pkg/safeurl"
@@ -87,25 +86,23 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 // LoginURL keeps the rest of the system out of auth's routing. An OAuth2 authorization endpoint
 // would be returned from here instead.
-func (h *Handler) LoginURL(next string) string {
-	target := safeurl.Next(next)
-	if target == "/" {
-		return "/login"
+func (h *Handler) LoginURL(next string) string { return safeurl.WithNext("/login", next) }
+
+// The URLs below take next too: several sites can link here, and each wants its visitor back.
+
+func (h *Handler) LogoutURL(next string) string   { return safeurl.WithNext("/logout", next) }
+func (h *Handler) PasswordURL(next string) string { return safeurl.WithNext("/password", next) }
+func (h *Handler) NewUserURL(next string) string  { return safeurl.WithNext(newUserPath, next) }
+func (h *Handler) SetupURL(next string) string    { return safeurl.WithNext("/setup", next) }
+
+// nextTarget is where the linking site asked to have the visitor sent back. It reads the body only
+// once parseForm has capped and parsed it.
+func nextTarget(r *http.Request) string {
+	if r.Form == nil {
+		return safeurl.Next(r.URL.Query().Get("next"))
 	}
 
-	return "/login?next=" + url.QueryEscape(target)
-}
-
-func (h *Handler) LogoutURL() string {
-	return "/logout"
-}
-
-func (h *Handler) PasswordURL() string {
-	return "/password"
-}
-
-func (h *Handler) NewUserURL() string {
-	return newUserPath
+	return safeurl.Next(r.Form.Get("next"))
 }
 
 // parseForm bounds the request body before reading it, so a large upload cannot be turned into

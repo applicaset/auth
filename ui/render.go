@@ -26,16 +26,17 @@ var stylesheet = asset.New(
 
 // pageData is what every template in this package receives.
 type pageData struct {
-	Title            string
-	StylesheetURL    string
-	ErrorMessage     string
-	Notice           string
-	Message          string
+	Title         string
+	StylesheetURL string
+	ErrorMessage  string
+	Notice        string
+	Message       string
+	// Next is where the page sends the visitor back to: the linking site's page, or "/".
 	Next             string
 	Username         string
 	Name             string
 	RegistrationOpen bool
-	// HideBackLink drops the link home from a page that already offers a way out.
+	// HideBackLink drops the link back from a page that already offers a way out.
 	HideBackLink bool
 }
 
@@ -88,6 +89,9 @@ func (h *Handler) render(
 	}
 
 	data.StylesheetURL = stylesheet.URL
+	if data.Next == "" {
+		data.Next = "/"
+	}
 
 	var buf bytes.Buffer
 
