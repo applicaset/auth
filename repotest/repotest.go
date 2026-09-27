@@ -97,8 +97,8 @@ func Run(t *testing.T, newRepository New) {
 	t.Run("ListUsers orders by created_at then id", func(t *testing.T) {
 		repository := newRepository(t)
 
-		// Two users share a timestamp so the id tiebreak decides, and the ids are chosen to differ
-		// by punctuation, which is where a locale collation would disagree with byte order.
+		// Two users share a timestamp, so the id tiebreak decides. The ids differ by punctuation,
+		// where a locale collation would disagree with byte order.
 		base := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
 
 		first := user("carol")

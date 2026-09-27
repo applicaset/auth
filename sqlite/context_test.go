@@ -25,7 +25,7 @@ func TestErrorCarriesContextButDoesNotLeakIt(t *testing.T) {
 	_, err = repository.GetUser(t.Context(), "01a0-missing-id")
 	require.Error(t, err)
 
-	// errors.Is still works, which every Classify and web/session.go depends on.
+	// Every Classify and web/session.go depend on errors.Is still matching.
 	require.ErrorIs(t, err, auth.ErrUserNotFound)
 
 	// The id is in the error, so a log line names the record that was missing.

@@ -12,16 +12,16 @@ import (
 	"github.com/buildset/buildset/pkg/action"
 )
 
-// The first user's role assignment is the one call in this binary that is retried: it is
-// idempotent, happens once per installation, and losing it leaves an instance nobody can
-// administer. The long timeout is for the same reason: a cold authorization service is worth it.
+// The first user's role assignment is the only retried call in this binary, with a long timeout
+// to wait out a cold authorization service. It is idempotent and runs once per installation.
+// Losing it leaves an instance nobody can administer.
 const (
 	firstUserTimeout = 10 * time.Second
 	firstUserRetries = 2
 )
 
-// firstUserHook makes the first account an administrator. The call crosses the network here, so
-// setup depends on the authorization service being up, which is why compose starts it first.
+// firstUserHook makes the first account an administrator over the network. Setup fails if the
+// authorization service is down, so compose starts it first.
 func firstUserHook(
 	client *authzclient.Client,
 	role string,
@@ -51,10 +51,9 @@ func firstUserHook(
 			)
 		}
 
-		// The account is about to be rolled back. An assignment that landed after the call gave up
-		// leaves a role row naming an account that no longer exists. Identifiers are not reused, so
-		// it can never match a future account; it is logged rather than compensated for with another
-		// call that could fail the same way.
+		// Logged, not compensated: a second call could fail the same way. The account is about to
+		// be rolled back, so a late assignment leaves a role row naming a deleted account.
+		// Identifiers are never reused, so that row can never match a future account.
 		logger.ErrorContext(ctx, "first user rolled back after an uncertain role assignment",
 			slog.String("user_ref", userRef),
 			slog.String("role", role),

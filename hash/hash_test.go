@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// legacy stands in for an algorithm that is registered but no longer preferred, which is what
-// argon2id will make bcrypt one day.
+// legacy stands in for a registered algorithm that is no longer preferred, as bcrypt will be once
+// argon2id lands.
 type legacy struct{}
 
 func (legacy) Name() string          { return "legacy" }
@@ -69,7 +69,7 @@ func TestRegistryDispatchesOnIdentifier(t *testing.T) {
 		hash.ErrMismatch,
 	)
 
-	// The seam that lets argon2id arrive later: an unregistered identifier is reported, not guessed at.
+	// An unregistered identifier is reported, not guessed at, so argon2id can be added later.
 	require.ErrorIs(
 		t,
 		registry.Verify("$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$aGFzaA", "whatever"),

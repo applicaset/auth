@@ -191,8 +191,8 @@ func build(
 	}
 
 	mux := http.NewServeMux()
-	// The pages keep unprefixed paths. Routing them at the gateway gives the browser one origin,
-	// which is what keeps the session cookie and the same-origin checks working.
+	// The pages keep unprefixed paths. The gateway routes them so the browser sees one origin,
+	// which the session cookie and the same-origin checks need.
 	pages.Register(mux)
 	api.Register(mux)
 
@@ -267,8 +267,8 @@ func Run(ctx context.Context) error {
 		Logger:          logger,
 		Routes:          service.Routes(),
 		Ready:           service.Ping,
-		// A browser posts sign-in forms here through the gateway, so cross-origin protection
-		// applies, and an inbound request identifier must not be trusted.
+		// Browsers post sign-in forms here through the gateway. Cross-origin protection applies,
+		// and an inbound request identifier is not trusted.
 		CrossOrigin:    true,
 		TrustRequestID: false,
 		Background:     []func(context.Context){service.SweepExpiredSessions},

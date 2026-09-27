@@ -127,7 +127,7 @@ func TestResolveSession(t *testing.T) {
 	assert.NotContains(t, string(body), token)
 }
 
-// This is what lets the site tell "no such session" apart from "the identity service is broken".
+// Separates "no such session" from "the identity service is broken".
 func TestResolveSessionReportsAnUnknownTokenAsNotFound(t *testing.T) {
 	server := newServer(t, newService(t))
 
@@ -173,8 +173,8 @@ func TestUpdateProfileReportsAConflict(t *testing.T) {
 	assert.Equal(t, "That username is already taken.", envelope.Message)
 }
 
-// A reference that is not one names no account, which is the same answer as an account that is
-// not there. It must never reach the site as a failure of the system.
+// A malformed reference names no account, the same answer as a missing account. It must never
+// reach the site as a system failure.
 func TestUpdateProfileReportsAMalformedReferenceAsNotFound(t *testing.T) {
 	server := newServer(t, newService(t))
 

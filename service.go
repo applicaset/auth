@@ -146,8 +146,8 @@ func (s *Service) Authenticate(ctx context.Context, username, password string) (
 	return user, nil
 }
 
-// rehashIfNeeded upgrades a hash written by a superseded algorithm. This is the only moment the
-// plaintext is available, and failing it must not fail the login.
+// rehashIfNeeded upgrades a hash written by a superseded algorithm. Login is the only moment the
+// plaintext is available. A failure here must not fail the login.
 func (s *Service) rehashIfNeeded(ctx context.Context, user *User, password string) {
 	if !s.passwords.NeedsRehash(user.PasswordHash) {
 		return

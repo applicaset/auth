@@ -401,8 +401,8 @@ func newClient(t *testing.T, h *harness) *harness {
 	}
 }
 
-// With public sign-up closed, the form is not merely refused but absent, so a stranger cannot tell
-// that registration exists here at all.
+// With public sign-up closed, the form is absent, not just refused. A stranger cannot tell that
+// registration exists here.
 func TestClosedSignUpIsHidden(t *testing.T) {
 	h := newHarness(t)
 	h.signUpOpen = false

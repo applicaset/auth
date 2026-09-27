@@ -7,8 +7,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// bcrypt silently truncates longer input, which would let a different password match, so longer
-// input is rejected instead.
+// MaxBcryptPasswordLength is the longest input accepted, in bytes. bcrypt silently truncates
+// longer input, which would let a different password match.
 const MaxBcryptPasswordLength = 72
 
 var errInvalidBcryptCost = errors.New("invalid bcrypt cost")
