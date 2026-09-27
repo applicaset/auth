@@ -32,6 +32,14 @@ func (c *Client) GetUserByRef(ctx context.Context, userRef string) (authapi.User
 	return c.user(ctx, authapi.PathGetUser, authapi.GetUserRequest{UserRef: userRef})
 }
 
+func (c *Client) GetUserByUsername(ctx context.Context, username string) (authapi.User, error) {
+	return c.user(
+		ctx,
+		authapi.PathGetUserByUsername,
+		authapi.GetUserByUsernameRequest{Username: username},
+	)
+}
+
 func (c *Client) ListUsers(ctx context.Context, limit int) ([]authapi.User, error) {
 	var response authapi.ListUsersResponse
 

@@ -39,6 +39,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	// an error, and never move it into the path or a query string.
 	mux.HandleFunc("POST "+authapi.PathResolveSession, h.resolveSession)
 	mux.HandleFunc("POST "+authapi.PathGetUser, h.getUser)
+	mux.HandleFunc("POST "+authapi.PathGetUserByUsername, h.getUserByUsername)
 	mux.HandleFunc("POST "+authapi.PathListUsers, h.listUsers)
 	mux.HandleFunc("POST "+authapi.PathUpdateProfile, h.updateProfile)
 	mux.HandleFunc("POST "+authapi.PathDeleteUser, h.deleteUser)
@@ -63,6 +64,16 @@ func (h *Handler) getUser(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.service.GetUserByRef(r.Context(), request.UserRef)
 	h.user(w, r, "get user", user, err)
+}
+
+func (h *Handler) getUserByUsername(w http.ResponseWriter, r *http.Request) {
+	var request authapi.GetUserByUsernameRequest
+	if !httpx.DecodeJSON(w, r, &request) {
+		return
+	}
+
+	user, err := h.service.GetUserByUsername(r.Context(), request.Username)
+	h.user(w, r, "get user by username", user, err)
 }
 
 func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {

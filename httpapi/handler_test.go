@@ -255,6 +255,37 @@ func TestDeleteUser(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, status)
 }
 
+func TestGetUserByUsernameIgnoresCase(t *testing.T) {
+	service := newService(t)
+	server := newServer(t, service)
+
+	alice, err := service.Register(
+		t.Context(),
+		auth.RegisterRequest{Username: "alice", Password: "correct-horse-battery"},
+	)
+	require.NoError(t, err)
+
+	status, body := post(
+		t,
+		server,
+		authapi.PathGetUserByUsername,
+		authapi.GetUserByUsernameRequest{Username: " Alice "},
+	)
+	require.Equal(t, http.StatusOK, status)
+
+	var response authapi.UserResponse
+	require.NoError(t, json.Unmarshal(body, &response))
+	assert.Equal(t, alice.Ref(), response.User.Ref)
+
+	status, _ = post(
+		t,
+		server,
+		authapi.PathGetUserByUsername,
+		authapi.GetUserByUsernameRequest{Username: "nobody"},
+	)
+	assert.Equal(t, http.StatusNotFound, status)
+}
+
 // The identity service's own pages hold these operations. Nothing over the network may create a
 // session or change a password.
 func TestCredentialOperationsAreNotServed(t *testing.T) {

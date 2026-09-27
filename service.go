@@ -301,6 +301,16 @@ func (s *Service) GetUserByRef(ctx context.Context, userRef string) (*User, erro
 	return s.GetUser(ctx, parsed.ID)
 }
 
+// GetUserByUsername takes the username in any case.
+func (s *Service) GetUserByUsername(ctx context.Context, username string) (*User, error) {
+	user, err := s.repository.GetUserByUsername(ctx, NormalizeUsername(username))
+	if err != nil {
+		return nil, fmt.Errorf("get user by username: %w", err)
+	}
+
+	return user, nil
+}
+
 func (s *Service) ListUsers(ctx context.Context, limit int) ([]User, error) {
 	if limit <= 0 || limit > maxUserLimit {
 		limit = maxUserLimit
