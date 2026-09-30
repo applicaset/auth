@@ -12,6 +12,7 @@ import (
 	"net/http"
 
 	"github.com/buildset/buildset/auth"
+	"github.com/buildset/buildset/auth/oidc"
 	"github.com/buildset/buildset/pkg/safeurl"
 )
 
@@ -28,12 +29,18 @@ var (
 type Config struct {
 	SessionCookieName string
 	SecureCookies     bool
+	// Links builds the URLs mailed out and the providers' callback address.
+	Links Links
+	// Providers are offered as sign-in buttons, in this order.
+	Providers []*oidc.Provider
 }
 
 type Handler struct {
 	service   *auth.Service
 	policy    RegistrationPolicy
 	config    Config
+	links     Links
+	providers []*oidc.Provider
 	templates map[string]*template.Template
 	logger    *slog.Logger
 }
@@ -46,6 +53,10 @@ func NewHandler(
 ) (*Handler, error) {
 	if config.SessionCookieName == "" {
 		return nil, fmt.Errorf("%w: session cookie name must not be empty", errInvalidConfig)
+	}
+
+	if config.Links.base == "" {
+		return nil, fmt.Errorf("%w: links must be built with NewLinks", errInvalidConfig)
 	}
 
 	if policy == nil {
@@ -61,6 +72,8 @@ func NewHandler(
 		service:   service,
 		policy:    policy,
 		config:    config,
+		links:     config.Links,
+		providers: config.Providers,
 		templates: templates,
 		logger:    logger,
 	}, nil
@@ -82,6 +95,26 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+newUserPath, h.newUserSubmit)
 	mux.HandleFunc("GET /password", h.passwordForm)
 	mux.HandleFunc("POST /password", h.passwordSubmit)
+	mux.HandleFunc("POST "+pathEmailLogin+"/request", h.emailLoginSubmit)
+	mux.HandleFunc("GET "+pathEmailLogin, h.emailLoginForm)
+	mux.HandleFunc("POST "+pathEmailLogin, h.emailLoginConfirm)
+	mux.HandleFunc("GET "+pathForgotPassword, h.forgotPasswordForm)
+	mux.HandleFunc("POST "+pathForgotPassword, h.forgotPasswordSubmit)
+	mux.HandleFunc("GET "+pathResetPassword, h.resetPasswordForm)
+	mux.HandleFunc("POST "+pathResetPassword, h.resetPasswordSubmit)
+	mux.HandleFunc("GET "+pathVerifyEmail, h.verifyEmail)
+	mux.HandleFunc("POST "+pathResendVerify, h.resendVerification)
+	mux.HandleFunc("GET "+pathConfirmEmail, h.confirmEmailForm)
+	mux.HandleFunc("POST "+pathConfirmEmail, h.confirmEmailSubmit)
+	mux.HandleFunc("GET "+pathOAuth+"/{provider}/start", h.oauthStart)
+	mux.HandleFunc("GET "+pathOAuth+"/{provider}/callback", h.oauthCallback)
+	mux.HandleFunc("POST "+pathOAuth+"/{provider}/callback", h.oauthCallback)
+	mux.HandleFunc("POST "+pathSettings+"/identities/unlink", h.unlinkProvider)
+	mux.HandleFunc("GET "+pathSettings, h.accountPage)
+	mux.HandleFunc("POST "+pathSettings+"/profile", h.accountProfileSubmit)
+	mux.HandleFunc("POST "+pathSettings+"/email", h.accountEmailSubmit)
+	mux.HandleFunc("GET "+pathSettings+"/delete", h.deleteAccountForm)
+	mux.HandleFunc("POST "+pathSettings+"/delete", h.deleteAccountSubmit)
 }
 
 // LoginURL keeps the rest of the system out of auth's routing. An OAuth2 authorization endpoint
@@ -94,6 +127,7 @@ func (h *Handler) LogoutURL(next string) string   { return safeurl.WithNext("/lo
 func (h *Handler) PasswordURL(next string) string { return safeurl.WithNext("/password", next) }
 func (h *Handler) NewUserURL(next string) string  { return safeurl.WithNext(newUserPath, next) }
 func (h *Handler) SetupURL(next string) string    { return safeurl.WithNext("/setup", next) }
+func (h *Handler) SettingsURL(next string) string { return safeurl.WithNext(pathSettings, next) }
 
 // nextTarget is where the linking site asked to have the visitor sent back. It reads the body only
 // once parseForm has capped and parsed it.

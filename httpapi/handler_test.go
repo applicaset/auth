@@ -15,8 +15,10 @@ import (
 	"github.com/buildset/buildset/auth/hash"
 	"github.com/buildset/buildset/auth/httpapi"
 	"github.com/buildset/buildset/auth/sqlite"
+	"github.com/buildset/buildset/auth/ui"
 	"github.com/buildset/buildset/pkg/api/authapi"
 	"github.com/buildset/buildset/pkg/httpx"
+	"github.com/buildset/buildset/pkg/mail"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
@@ -41,13 +43,16 @@ func newService(t *testing.T) *auth.Service {
 	passwords, err := hash.NewRegistry(algorithm)
 	require.NoError(t, err)
 
-	service, err := auth.NewService(
-		repository,
-		passwords,
-		nil,
-		time.Hour,
-		slog.New(slog.DiscardHandler),
-	)
+	links, err := ui.NewLinks("http://auth.test")
+	require.NoError(t, err)
+
+	service, err := auth.NewService(repository, auth.Options{
+		Passwords:  passwords,
+		SessionTTL: time.Hour,
+		Mailer:     &mail.Recorder{},
+		Links:      links,
+		Logger:     slog.New(slog.DiscardHandler),
+	})
 	require.NoError(t, err)
 
 	return service
@@ -100,6 +105,7 @@ func TestResolveSession(t *testing.T) {
 
 	user, err := service.Register(t.Context(), auth.RegisterRequest{
 		Username: "alice",
+		Email:    "alice@example.com",
 		Name:     "Alice",
 		Password: "correct-horse-battery",
 	})
@@ -151,13 +157,21 @@ func TestUpdateProfileReportsAConflict(t *testing.T) {
 
 	alice, err := service.Register(
 		t.Context(),
-		auth.RegisterRequest{Username: "alice", Password: "correct-horse-battery"},
+		auth.RegisterRequest{
+			Username: "alice",
+			Email:    "alice@example.com",
+			Password: "correct-horse-battery",
+		},
 	)
 	require.NoError(t, err)
 
 	bob, err := service.Register(
 		t.Context(),
-		auth.RegisterRequest{Username: "bob", Password: "correct-horse-battery"},
+		auth.RegisterRequest{
+			Username: "bob",
+			Email:    "bob@example.com",
+			Password: "correct-horse-battery",
+		},
 	)
 	require.NoError(t, err)
 
@@ -202,7 +216,11 @@ func TestSetupOpenClosesAfterTheFirstAccount(t *testing.T) {
 
 	_, err := service.Register(
 		t.Context(),
-		auth.RegisterRequest{Username: "alice", Password: "correct-horse-battery"},
+		auth.RegisterRequest{
+			Username: "alice",
+			Email:    "alice@example.com",
+			Password: "correct-horse-battery",
+		},
 	)
 	require.NoError(t, err)
 
@@ -218,7 +236,11 @@ func TestListUsersCarriesNoCredentials(t *testing.T) {
 
 	_, err := service.Register(
 		t.Context(),
-		auth.RegisterRequest{Username: "alice", Password: "correct-horse-battery"},
+		auth.RegisterRequest{
+			Username: "alice",
+			Email:    "alice@example.com",
+			Password: "correct-horse-battery",
+		},
 	)
 	require.NoError(t, err)
 
@@ -238,7 +260,11 @@ func TestDeleteUser(t *testing.T) {
 
 	alice, err := service.Register(
 		t.Context(),
-		auth.RegisterRequest{Username: "alice", Password: "correct-horse-battery"},
+		auth.RegisterRequest{
+			Username: "alice",
+			Email:    "alice@example.com",
+			Password: "correct-horse-battery",
+		},
 	)
 	require.NoError(t, err)
 
@@ -261,7 +287,11 @@ func TestGetUserByUsernameIgnoresCase(t *testing.T) {
 
 	alice, err := service.Register(
 		t.Context(),
-		auth.RegisterRequest{Username: "alice", Password: "correct-horse-battery"},
+		auth.RegisterRequest{
+			Username: "alice",
+			Email:    "alice@example.com",
+			Password: "correct-horse-battery",
+		},
 	)
 	require.NoError(t, err)
 

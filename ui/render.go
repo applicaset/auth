@@ -34,8 +34,17 @@ type pageData struct {
 	// Next is where the page sends the visitor back to: the linking site's page, or "/".
 	Next             string
 	Username         string
+	Email            string
 	Name             string
 	RegistrationOpen bool
+	// Token is the secret from a mailed link, carried into the form that uses it.
+	Token string
+	// Action and Button configure the one-button page that confirms a mailed link.
+	Action    string
+	Button    string
+	Providers []providerView
+	// Account is the signed-in person on the settings page.
+	Account *accountView
 	// HideBackLink drops the link back from a page that already offers a way out.
 	HideBackLink bool
 }
@@ -51,6 +60,12 @@ func parseTemplates() (map[string]*template.Template, error) {
 		"password.gohtml",
 		"logout.gohtml",
 		"error.gohtml",
+		"email_sent.gohtml",
+		"token_confirm.gohtml",
+		"forgot_password.gohtml",
+		"reset_password.gohtml",
+		"settings.gohtml",
+		"delete_account.gohtml",
 	}
 	pages := make(map[string]*template.Template, len(names))
 

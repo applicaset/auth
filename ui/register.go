@@ -142,6 +142,7 @@ func (h *Handler) createUser(
 
 	req := auth.RegisterRequest{
 		Username: r.PostFormValue("username"),
+		Email:    r.PostFormValue("email"),
 		Name:     r.PostFormValue("name"),
 		Password: r.PostFormValue("password"),
 	}
@@ -158,7 +159,7 @@ func (h *Handler) createUser(
 	}
 
 	status := http.StatusBadRequest
-	if errors.Is(err, auth.ErrUsernameTaken) {
+	if errors.Is(err, auth.ErrUsernameTaken) || errors.Is(err, auth.ErrEmailTaken) {
 		status = http.StatusConflict
 	}
 
@@ -167,6 +168,7 @@ func (h *Handler) createUser(
 		ErrorMessage: userFacingError(err, "That account could not be created."),
 		Next:         nextTarget(r),
 		Username:     req.Username,
+		Email:        req.Email,
 		Name:         req.Name,
 	})
 

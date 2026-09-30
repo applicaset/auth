@@ -9,11 +9,12 @@ import (
 )
 
 func (h *Handler) passwordForm(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := h.requireSession(w, r); !ok {
+	session, user, ok := h.requireSession(w, r)
+	if !ok {
 		return
 	}
 
-	data := pageData{Title: "Change your password", Next: nextTarget(r)}
+	data := h.passwordPage(r, session, user)
 	if r.URL.Query().Has("changed") {
 		data.Notice = "Your password has been changed."
 	}
@@ -28,6 +29,15 @@ func (h *Handler) passwordSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !h.parseForm(w, r) {
+		return
+	}
+
+	// An account without a password proves itself with a fresh session instead.
+	if !user.HasPassword() && !freshSession(session) {
+		data := h.passwordPage(r, session, user)
+		data.ErrorMessage = "Sign in again to set a password."
+		h.render(w, r, http.StatusUnauthorized, "password.gohtml", data)
+
 		return
 	}
 
@@ -50,11 +60,9 @@ func (h *Handler) passwordSubmit(w http.ResponseWriter, r *http.Request) {
 			message = "Your current password is not correct."
 		}
 
-		h.render(w, r, http.StatusBadRequest, "password.gohtml", pageData{
-			Title:        "Change your password",
-			ErrorMessage: message,
-			Next:         nextTarget(r),
-		})
+		data := h.passwordPage(r, session, user)
+		data.ErrorMessage = message
+		h.render(w, r, http.StatusBadRequest, "password.gohtml", data)
 
 		return
 	}
@@ -101,4 +109,20 @@ func (h *Handler) requireSession(
 	http.Redirect(w, r, h.LoginURL(r.URL.RequestURI()), http.StatusSeeOther)
 
 	return nil, nil, false
+}
+
+func (h *Handler) passwordPage(r *http.Request, session *auth.Session, user *auth.User) pageData {
+	title := "Change your password"
+	if !user.HasPassword() {
+		title = "Set a password"
+	}
+
+	return pageData{
+		Title: title,
+		Next:  nextTarget(r),
+		Account: &accountView{
+			HasPassword:     user.HasPassword(),
+			Reauthenticated: freshSession(session),
+		},
+	}
 }

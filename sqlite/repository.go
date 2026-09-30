@@ -8,6 +8,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Masterminds/squirrel"
@@ -79,3 +80,33 @@ func parseTime(value string) (time.Time, error) {
 }
 
 var _ auth.Repository = (*Repository)(nil)
+
+// userConflict names the column a unique violation hit. The driver reports it only in the message,
+// as "UNIQUE constraint failed: users.email".
+func userConflict(err error, user *auth.User) error {
+	if strings.Contains(err.Error(), tableUsers+"."+userColumnEmail) {
+		return fmt.Errorf("%w: %s", auth.ErrEmailTaken, user.Email)
+	}
+
+	return fmt.Errorf("%w: %s", auth.ErrUsernameTaken, user.Username)
+}
+
+// nullableString stores an empty string as NULL, so a UNIQUE column accepts any number of blanks.
+func nullableString(value string) sql.NullString {
+	return sql.NullString{String: value, Valid: value != ""}
+}
+
+func nullableTime(value *time.Time) sql.NullString {
+	if value == nil {
+		return sql.NullString{}
+	}
+
+	return sql.NullString{String: formatTime(*value), Valid: true}
+}
+
+func isPrimaryKeyViolation(err error) bool {
+	var sqliteError *sqlitedriver.Error
+
+	return errors.As(err, &sqliteError) &&
+		sqliteError.Code() == sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY
+}

@@ -13,7 +13,10 @@ func userFacingError(err error, fallback string) string {
 	switch {
 	case errors.Is(err, auth.ErrUsernameTaken):
 		return "That username is already taken."
+	case errors.Is(err, auth.ErrEmailTaken):
+		return "That email address is already in use."
 	case errors.Is(err, auth.ErrInvalidUsername),
+		errors.Is(err, auth.ErrInvalidEmail),
 		errors.Is(err, hash.ErrPasswordTooShort):
 		return err.Error()
 	case errors.Is(err, hash.ErrPasswordTooLong):
@@ -31,6 +34,8 @@ func userFacingError(err error, fallback string) string {
 func isValidationError(err error) bool {
 	return errors.Is(err, auth.ErrUsernameTaken) ||
 		errors.Is(err, auth.ErrInvalidUsername) ||
+		errors.Is(err, auth.ErrEmailTaken) ||
+		errors.Is(err, auth.ErrInvalidEmail) ||
 		errors.Is(err, hash.ErrPasswordTooShort) ||
 		errors.Is(err, hash.ErrPasswordTooLong)
 }

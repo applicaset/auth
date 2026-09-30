@@ -12,17 +12,23 @@ import (
 func (h *Handler) loginForm(w http.ResponseWriter, r *http.Request) {
 	next := safeurl.Next(r.URL.Query().Get("next"))
 
-	if _, _, err := h.currentSession(r); err == nil {
+	// reauth asks a signed-in person to prove it is still them before a sensitive change.
+	if _, _, err := h.currentSession(r); err == nil && !r.URL.Query().Has("reauth") {
 		http.Redirect(w, r, next, http.StatusSeeOther)
 
 		return
 	}
 
-	h.render(w, r, http.StatusOK, "login.gohtml", pageData{
-		Title:            "Sign in",
-		Next:             next,
-		RegistrationOpen: h.anonymousMayRegister(r),
-	})
+	h.render(w, r, http.StatusOK, "login.gohtml", h.loginPage(r, pageData{Next: next}))
+}
+
+// loginPage fills what every rendering of the sign-in page shows.
+func (h *Handler) loginPage(r *http.Request, data pageData) pageData {
+	data.Title = "Sign in"
+	data.RegistrationOpen = h.anonymousMayRegister(r)
+	data.Providers = h.providerViews()
+
+	return data
 }
 
 func (h *Handler) loginSubmit(w http.ResponseWriter, r *http.Request) {
@@ -31,11 +37,11 @@ func (h *Handler) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		username = r.PostFormValue("username")
-		next     = safeurl.Next(r.PostFormValue("next"))
+		login = r.PostFormValue("login")
+		next  = safeurl.Next(r.PostFormValue("next"))
 	)
 
-	user, err := h.service.Authenticate(r.Context(), username, r.PostFormValue("password"))
+	user, err := h.service.Authenticate(r.Context(), login, r.PostFormValue("password"))
 	if err != nil {
 		if !errors.Is(err, auth.ErrInvalidCredentials) {
 			h.renderInternalError(w, r, err, "authenticate user")
@@ -43,15 +49,13 @@ func (h *Handler) loginSubmit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// The same message for an unknown username and a wrong password, so the form cannot be
+		// The same message for an unknown account and a wrong password, so the form cannot be
 		// used to find out which accounts exist.
-		h.render(w, r, http.StatusUnauthorized, "login.gohtml", pageData{
-			Title:            "Sign in",
-			ErrorMessage:     auth.ErrInvalidCredentials.Error(),
-			Next:             next,
-			Username:         username,
-			RegistrationOpen: h.anonymousMayRegister(r),
-		})
+		h.render(w, r, http.StatusUnauthorized, "login.gohtml", h.loginPage(r, pageData{
+			ErrorMessage: auth.ErrInvalidCredentials.Error(),
+			Next:         next,
+			Username:     login,
+		}))
 
 		return
 	}

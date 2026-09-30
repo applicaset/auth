@@ -1,0 +1,7 @@
+{{ define "content" }}
+<form method="post" action="{{ .Action }}" class="flex flex-col gap-5">
+    <input type="hidden" name="token" value="{{ .Token }}">
+    <input type="hidden" name="next" value="{{ .Next }}">
+    <button type="submit" class="as-button w-full" autofocus>{{ .Button }}</button>
+</form>
+{{ end }}

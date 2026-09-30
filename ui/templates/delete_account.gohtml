@@ -1,0 +1,16 @@
+{{ define "content" }}
+<p>This deletes your account and signs you out everywhere. It cannot be undone.</p>
+<form method="post" action="/settings/delete" class="flex flex-col gap-5">
+    <input type="hidden" name="next" value="{{ .Next }}">
+    <label class="as-field">Type DELETE to confirm <input class="as-input" name="confirm" required autocomplete="off"></label>
+    {{ if .Account.HasPassword }}
+    <label class="as-field">Current password <input class="as-input" name="current_password" type="password" required autocomplete="current-password"></label>
+    {{ else if not .Account.Reauthenticated }}
+    <p class="as-alert variant-info"><a href="/login?reauth&amp;next=/settings/delete">Sign in again</a> first, so we know it is you.</p>
+    {{ end }}
+    <div class="flex flex-wrap gap-2">
+        <button type="submit" class="as-button is-danger">Delete account</button>
+        <a href="/settings?next={{ .Next }}" class="as-button variant-outlined">Cancel</a>
+    </div>
+</form>
+{{ end }}

@@ -1,0 +1,63 @@
+{{ define "content" }}
+{{ with .Account }}
+<section class="flex flex-col gap-4">
+    <h2>Profile</h2>
+    <form method="post" action="/settings/profile" class="flex flex-col gap-5">
+        <input type="hidden" name="next" value="{{ $.Next }}">
+        <label class="as-field">Username <input class="as-input" name="username" value="{{ .Username }}" required autocomplete="username"></label>
+        <label class="as-field">Display name <input class="as-input" name="name" value="{{ .Name }}" autocomplete="name"></label>
+        <button type="submit" class="as-button">Save profile</button>
+    </form>
+</section>
+
+<section class="flex flex-col gap-4">
+    <h2>Email</h2>
+    {{ if .Email }}
+    <p>{{ .Email }} {{ if .EmailVerified }}<span class="as-badge variant-success">Confirmed</span>{{ else }}<span class="as-badge variant-warning">Not confirmed</span>{{ end }}</p>
+    {{ if not .EmailVerified }}
+    <form method="post" action="/verify-email/resend">
+        <input type="hidden" name="next" value="{{ $.Next }}">
+        <button type="submit" class="as-button variant-outlined size-sm">Send confirmation link again</button>
+    </form>
+    {{ end }}
+    {{ else }}
+    <p class="as-hint">Your account has no email address. Add one to sign in by email link and to reset a forgotten password.</p>
+    {{ end }}
+    <form method="post" action="/settings/email" class="flex flex-col gap-5">
+        <input type="hidden" name="next" value="{{ $.Next }}">
+        <label class="as-field">New email <input class="as-input" name="email" type="email" required autocomplete="email"></label>
+        {{ if .HasPassword }}<label class="as-field">Current password <input class="as-input" name="current_password" type="password" required autocomplete="current-password"></label>{{ end }}
+        <button type="submit" class="as-button variant-outlined">Change email</button>
+    </form>
+    <p class="as-hint">We send a link to the new address. Your email changes when you open it.</p>
+</section>
+
+<section class="flex flex-col gap-4">
+    <h2>Password</h2>
+    <p><a href="/password?next={{ $.Next }}" class="as-button variant-outlined">{{ if .HasPassword }}Change password{{ else }}Set a password{{ end }}</a></p>
+</section>
+
+<section class="flex flex-col gap-4">
+    <h2>Sign-in methods</h2>
+    {{ range .Identities }}
+    <form method="post" action="/settings/identities/unlink" class="flex items-center justify-between gap-2">
+        <input type="hidden" name="provider" value="{{ .Provider }}">
+        <input type="hidden" name="subject" value="{{ .Subject }}">
+        <input type="hidden" name="next" value="{{ $.Next }}">
+        <span>{{ .Label }}{{ if .Email }} <span class="as-hint">{{ .Email }}</span>{{ end }}</span>
+        <button type="submit" class="as-button variant-outlined size-sm">Remove</button>
+    </form>
+    {{ else }}
+    <p class="as-hint">No sign-in provider is linked.</p>
+    {{ end }}
+    {{ range .Providers }}
+    <p><a href="{{ .StartURL }}?link&amp;next=/settings" class="as-button variant-outlined">Link {{ .Label }}</a></p>
+    {{ end }}
+</section>
+
+<section class="flex flex-col gap-4">
+    <h2>Danger zone</h2>
+    <p><a href="/settings/delete?next={{ $.Next }}" class="as-button variant-outlined is-danger">Delete account</a></p>
+</section>
+{{ end }}
+{{ end }}

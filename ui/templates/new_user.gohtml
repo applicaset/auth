@@ -2,6 +2,7 @@
 <form method="post" action="/users/new" class="flex flex-col gap-5">
     <input type="hidden" name="next" value="{{ .Next }}">
     <label class="as-field">Username <input class="as-input" name="username" value="{{ .Username }}" required autofocus autocomplete="off"></label>
+    <label class="as-field">Email <input class="as-input" name="email" type="email" value="{{ .Email }}" required autocomplete="off"></label>
     <label class="as-field">Display name <input class="as-input" name="name" value="{{ .Name }}" autocomplete="off"></label>
     <label class="as-field">Password <input class="as-input" name="password" type="password" required autocomplete="new-password"></label>
     <button type="submit" class="as-button w-full">Add user</button>

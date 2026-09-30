@@ -1,9 +1,21 @@
 {{ define "content" }}
 <form method="post" action="/login" class="flex flex-col gap-5">
     <input type="hidden" name="next" value="{{ .Next }}">
-    <label class="as-field">Username <input class="as-input" name="username" value="{{ .Username }}" required autofocus autocomplete="username"></label>
+    <label class="as-field">Username or email <input class="as-input" name="login" value="{{ .Username }}" required autofocus autocomplete="username"></label>
     <label class="as-field">Password <input class="as-input" name="password" type="password" required autocomplete="current-password"></label>
     <button type="submit" class="as-button w-full">Sign in</button>
+    <p class="as-hint"><a href="/forgot-password?next={{ .Next }}">Forgot your password?</a></p>
 </form>
+<hr class="border-(--color-border)">
+<form method="post" action="/login/email/request" class="flex flex-col gap-5">
+    <input type="hidden" name="next" value="{{ .Next }}">
+    <label class="as-field">Email <input class="as-input" name="email" type="email" value="{{ .Email }}" required autocomplete="email"></label>
+    <button type="submit" class="as-button variant-outlined w-full">Email me a sign-in link</button>
+</form>
+{{ with .Providers }}
+<div class="flex flex-col gap-2">
+    {{ range . }}<a href="{{ .StartURL }}" class="as-button variant-outlined w-full">Continue with {{ .Label }}</a>{{ end }}
+</div>
+{{ end }}
 {{ if .RegistrationOpen }}<p class="as-hint"><a href="/register?next={{ .Next }}">Create an account</a></p>{{ end }}
 {{ end }}

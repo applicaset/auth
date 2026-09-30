@@ -310,6 +310,10 @@ func Run(t *testing.T, newRepository New) {
 
 		require.NoError(t, repository.DeleteSessionByTokenHash(context.Background(), "nothing"))
 	})
+
+	runEmail(t, newRepository)
+	runTokens(t, newRepository)
+	runIdentities(t, newRepository)
 }
 
 func user(username string) *auth.User {

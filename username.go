@@ -2,6 +2,7 @@ package auth
 
 import (
 	"fmt"
+	mathrand "math/rand/v2"
 	"strings"
 )
 
@@ -44,4 +45,39 @@ func ValidateUsername(username string) error {
 	}
 
 	return nil
+}
+
+// UsernameFromEmail proposes a valid username for an account whose owner never picked one: the
+// email's local part with every other character turned into a hyphen.
+func UsernameFromEmail(email string) string {
+	local, _, _ := strings.Cut(NormalizeEmail(email), "@")
+
+	var builder strings.Builder
+
+	for _, c := range local {
+		switch {
+		case c >= 'a' && c <= 'z', c >= '0' && c <= '9', c == '_', c == '-':
+			builder.WriteRune(c)
+		default:
+			builder.WriteRune('-')
+		}
+	}
+
+	username := strings.TrimLeft(builder.String(), "-_")
+	// Room for the suffix withNumericSuffix may add.
+	username = username[:min(len(username), MaxUsernameLength-suffixLength)]
+
+	if len(username) < MinUsernameLength {
+		username = strings.TrimSuffix("user-"+username, "-")
+	}
+
+	return username
+}
+
+const suffixLength = 5
+
+// withNumericSuffix appends a hyphen and four random digits.
+func withNumericSuffix(username string) string {
+	return fmt.Sprintf("%s-%04d", username[:min(len(username), MaxUsernameLength-suffixLength)],
+		mathrand.IntN(10000))
 }

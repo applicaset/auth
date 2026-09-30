@@ -43,6 +43,7 @@ func (h *Handler) setupSubmit(w http.ResponseWriter, r *http.Request) {
 
 	req := auth.RegisterRequest{
 		Username: r.PostFormValue("username"),
+		Email:    r.PostFormValue("email"),
 		Name:     r.PostFormValue("name"),
 		Password: r.PostFormValue("password"),
 	}
@@ -67,6 +68,7 @@ func (h *Handler) setupSubmit(w http.ResponseWriter, r *http.Request) {
 			ErrorMessage: userFacingError(err, "That account could not be created."),
 			Next:         nextTarget(r),
 			Username:     req.Username,
+			Email:        req.Email,
 			Name:         req.Name,
 		})
 

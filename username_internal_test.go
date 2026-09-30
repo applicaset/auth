@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -35,5 +36,21 @@ func TestValidateUsername(t *testing.T) {
 	}
 	for _, username := range invalid {
 		require.Error(t, ValidateUsername(username), username)
+	}
+}
+
+func TestUsernameFromEmail(t *testing.T) {
+	for email, want := range map[string]string{
+		"Ada.Lovelace@example.com":               "ada-lovelace",
+		"_x@example.com":                         "user-x",
+		"a@example.com":                          "user-a",
+		"-@example.com":                          "user",
+		"a+b@example.com":                        "a-b",
+		strings.Repeat("z", 60) + "@example.com": strings.Repeat("z", MaxUsernameLength-suffixLength),
+	} {
+		got := UsernameFromEmail(email)
+		assert.Equal(t, want, got, email)
+		require.NoError(t, ValidateUsername(got), email)
+		require.NoError(t, ValidateUsername(withNumericSuffix(got)), email)
 	}
 }

@@ -15,6 +15,8 @@ const tableUsers = "users"
 const (
 	userColumnID           = "id"
 	userColumnUsername     = "username"
+	userColumnEmail        = "email"
+	userColumnVerifiedAt   = "email_verified_at"
 	userColumnName         = "name"
 	userColumnPasswordHash = "password_hash"
 	userColumnCreatedAt    = "created_at"
@@ -25,6 +27,8 @@ func userColumns() []string {
 	return []string{
 		userColumnID,
 		userColumnUsername,
+		userColumnEmail,
+		userColumnVerifiedAt,
 		userColumnName,
 		userColumnPasswordHash,
 		userColumnCreatedAt,
@@ -39,6 +43,8 @@ func (r *Repository) InsertUser(ctx context.Context, user *auth.User) error {
 		Values(
 			user.ID,
 			user.Username,
+			nullableString(user.Email),
+			user.EmailVerifiedAt,
 			user.Name,
 			user.PasswordHash,
 			user.CreatedAt,
@@ -47,7 +53,7 @@ func (r *Repository) InsertUser(ctx context.Context, user *auth.User) error {
 		ExecContext(ctx)
 	if err != nil {
 		if isUniqueViolation(err) {
-			return fmt.Errorf("%w: %s", auth.ErrUsernameTaken, user.Username)
+			return userConflict(err, user)
 		}
 
 		return fmt.Errorf("insert user: %w", err)
@@ -60,6 +66,8 @@ func (r *Repository) UpdateUser(ctx context.Context, user *auth.User) error {
 	result, err := r.builder().
 		Update(tableUsers).
 		Set(userColumnUsername, user.Username).
+		Set(userColumnEmail, nullableString(user.Email)).
+		Set(userColumnVerifiedAt, user.EmailVerifiedAt).
 		Set(userColumnName, user.Name).
 		Set(userColumnPasswordHash, user.PasswordHash).
 		Set(userColumnUpdatedAt, user.UpdatedAt).
@@ -67,7 +75,7 @@ func (r *Repository) UpdateUser(ctx context.Context, user *auth.User) error {
 		ExecContext(ctx)
 	if err != nil {
 		if isUniqueViolation(err) {
-			return fmt.Errorf("%w: %s", auth.ErrUsernameTaken, user.Username)
+			return userConflict(err, user)
 		}
 
 		return fmt.Errorf("update user: %w", err)
@@ -96,6 +104,16 @@ func (r *Repository) GetUser(ctx context.Context, id string) (*auth.User, error)
 		QueryRowContext(ctx)
 
 	return scanUser(row, fmt.Errorf("%w: %s", auth.ErrUserNotFound, id))
+}
+
+func (r *Repository) GetUserByEmail(ctx context.Context, email string) (*auth.User, error) {
+	row := r.builder().
+		Select(userColumns()...).
+		From(tableUsers).
+		Where(squirrel.Eq{userColumnEmail: email}).
+		QueryRowContext(ctx)
+
+	return scanUser(row, fmt.Errorf("%w: %s", auth.ErrUserNotFound, email))
 }
 
 func (r *Repository) GetUserByUsername(ctx context.Context, username string) (*auth.User, error) {
@@ -154,11 +172,17 @@ func (r *Repository) CountUsers(ctx context.Context) (int, error) {
 }
 
 func scanUser(row rowScanner, notFound error) (*auth.User, error) {
-	var user auth.User
+	var (
+		user       auth.User
+		email      sql.NullString
+		verifiedAt sql.NullTime
+	)
 
 	err := row.Scan(
 		&user.ID,
 		&user.Username,
+		&email,
+		&verifiedAt,
 		&user.Name,
 		&user.PasswordHash,
 		&user.CreatedAt,
@@ -170,6 +194,13 @@ func scanUser(row rowScanner, notFound error) (*auth.User, error) {
 		}
 
 		return nil, fmt.Errorf("scan user: %w", err)
+	}
+
+	user.Email = email.String
+
+	if verifiedAt.Valid {
+		verified := verifiedAt.Time.UTC()
+		user.EmailVerifiedAt = &verified
 	}
 
 	user.CreatedAt = user.CreatedAt.UTC()

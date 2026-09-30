@@ -24,29 +24,44 @@ const (
 	maxUserLimit  = 500
 )
 
-var errInvalidSessionTTL = errors.New("session ttl must be positive")
+var (
+	errInvalidSessionTTL = errors.New("session ttl must be positive")
+	errMissingMailer     = errors.New("a mailer and links must be provided")
+)
 
 type Service struct {
 	repository    Repository
 	passwords     *hash.Registry
 	firstUserHook FirstUserHook
 	sessionTTL    time.Duration
+	mailer        Mailer
+	links         Links
 	logger        *slog.Logger
 	// dummyHash is compared against when the username is unknown, so a failed login takes the same
 	// time whether or not the account exists.
 	dummyHash string
 }
 
-func NewService(
-	repository Repository,
-	passwords *hash.Registry,
-	firstUserHook FirstUserHook,
-	sessionTTL time.Duration,
-	logger *slog.Logger,
-) (*Service, error) {
-	if sessionTTL <= 0 {
-		return nil, fmt.Errorf("%w: got %s", errInvalidSessionTTL, sessionTTL)
+// Options are the dependencies a Service needs beyond its storage.
+type Options struct {
+	Passwords     *hash.Registry
+	FirstUserHook FirstUserHook
+	SessionTTL    time.Duration
+	Mailer        Mailer
+	Links         Links
+	Logger        *slog.Logger
+}
+
+func NewService(repository Repository, options Options) (*Service, error) {
+	if options.SessionTTL <= 0 {
+		return nil, fmt.Errorf("%w: got %s", errInvalidSessionTTL, options.SessionTTL)
 	}
+
+	if options.Mailer == nil || options.Links == nil {
+		return nil, errMissingMailer
+	}
+
+	passwords := options.Passwords
 
 	dummyHash, err := passwords.Hash(rand.Text())
 	if err != nil {
@@ -56,15 +71,18 @@ func NewService(
 	return &Service{
 		repository:    repository,
 		passwords:     passwords,
-		firstUserHook: firstUserHook,
-		sessionTTL:    sessionTTL,
-		logger:        logger,
+		firstUserHook: options.FirstUserHook,
+		sessionTTL:    options.SessionTTL,
+		mailer:        options.Mailer,
+		links:         options.Links,
+		logger:        options.Logger,
 		dummyHash:     dummyHash,
 	}, nil
 }
 
 type RegisterRequest struct {
 	Username string
+	Email    string
 	Name     string
 	Password string
 }
@@ -91,9 +109,17 @@ type SessionMeta struct {
 
 // FIXME: no rate limiting. Registration, login, and password change are all open to unlimited
 // attempts (OWASP ASVS V2.2.1). A limiter keyed by username and client address is the next step.
+//
+// A verification link goes to the new address. Failing to send it does not fail the registration:
+// the person can ask for another from their settings.
 func (s *Service) Register(ctx context.Context, req RegisterRequest) (*User, error) {
 	username := NormalizeUsername(req.Username)
 	if err := ValidateUsername(username); err != nil {
+		return nil, err
+	}
+
+	email := NormalizeEmail(req.Email)
+	if err := ValidateEmail(email); err != nil {
 		return nil, err
 	}
 
@@ -107,6 +133,7 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*User, err
 	user := &User{
 		ID:           uuid.NewV7().String(),
 		Username:     username,
+		Email:        email,
 		Name:         normalizeName(req.Name),
 		PasswordHash: passwordHash,
 		CreatedAt:    now,
@@ -117,11 +144,21 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*User, err
 		return nil, fmt.Errorf("insert user: %w", err)
 	}
 
+	if err := s.SendVerification(ctx, user.ID); err != nil {
+		s.logger.WarnContext(ctx, "send verification after registration",
+			slog.String("user_id", user.ID), slog.Any("error", err))
+	}
+
 	return user, nil
 }
 
-func (s *Service) Authenticate(ctx context.Context, username, password string) (*User, error) {
-	user, err := s.repository.GetUserByUsername(ctx, NormalizeUsername(username))
+// Authenticate takes a username or an email address as login.
+func (s *Service) Authenticate(ctx context.Context, login, password string) (*User, error) {
+	user, err := s.userByLogin(ctx, login)
+	if err == nil && !user.HasPassword() {
+		err = ErrUserNotFound
+	}
+
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
 			// Spend the same work as a real comparison so response time does not reveal the answer.
@@ -130,7 +167,7 @@ func (s *Service) Authenticate(ctx context.Context, username, password string) (
 			return nil, ErrInvalidCredentials
 		}
 
-		return nil, fmt.Errorf("get user by username: %w", err)
+		return nil, fmt.Errorf("get user by login: %w", err)
 	}
 
 	if err := s.passwords.Verify(user.PasswordHash, password); err != nil {
@@ -346,18 +383,22 @@ func (s *Service) UpdateProfile(ctx context.Context, req UpdateProfileRequest) (
 	return user, nil
 }
 
+// ChangePassword checks the current password only when the account has one. Setting a first
+// password on an account without one relies on the caller having just re-authenticated the person.
 func (s *Service) ChangePassword(ctx context.Context, req ChangePasswordRequest) error {
 	user, err := s.repository.GetUser(ctx, req.UserID)
 	if err != nil {
 		return fmt.Errorf("get user: %w", err)
 	}
 
-	if err := s.passwords.Verify(user.PasswordHash, req.CurrentPassword); err != nil {
-		if errors.Is(err, hash.ErrMismatch) {
-			return ErrInvalidCredentials
-		}
+	if user.HasPassword() {
+		if err := s.passwords.Verify(user.PasswordHash, req.CurrentPassword); err != nil {
+			if errors.Is(err, hash.ErrMismatch) {
+				return ErrInvalidCredentials
+			}
 
-		return fmt.Errorf("verify current password: %w", err)
+			return fmt.Errorf("verify current password: %w", err)
+		}
 	}
 
 	passwordHash, err := s.passwords.Hash(req.NewPassword)

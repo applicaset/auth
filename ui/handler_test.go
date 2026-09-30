@@ -20,8 +20,10 @@ import (
 
 	"github.com/buildset/buildset/auth"
 	"github.com/buildset/buildset/auth/hash"
+	"github.com/buildset/buildset/auth/oidc"
 	authsqlite "github.com/buildset/buildset/auth/sqlite"
 	"github.com/buildset/buildset/auth/ui"
+	"github.com/buildset/buildset/pkg/mail"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
@@ -51,6 +53,7 @@ type harness struct {
 	client *http.Client
 	db     *sql.DB
 	hook   *recordingHook
+	mailer *mail.Recorder
 	// signUpOpen and mayAddUser decide what the registration policy answers.
 	signUpOpen bool
 	mayAddUser func(actorRef string) bool
@@ -65,10 +68,13 @@ func (p testPolicy) MayAddUser(_ context.Context, actorRef string) (bool, error)
 	return p.h.mayAddUser(actorRef), nil
 }
 
-func newHarness(t *testing.T) *harness {
+func newHarness(t *testing.T, providers ...oidc.Config) *harness {
 	t.Helper()
 
-	db, err := sql.Open("sqlite", "file:"+t.Name()+"?mode=memory&cache=shared")
+	db, err := sql.Open(
+		"sqlite",
+		"file:"+t.Name()+"?mode=memory&cache=shared&_pragma=foreign_keys(ON)",
+	)
 	require.NoError(t, err)
 
 	db.SetMaxOpenConns(1)
@@ -85,17 +91,24 @@ func newHarness(t *testing.T) *harness {
 
 	hook := &recordingHook{}
 
-	service, err := auth.NewService(
-		repository,
-		passwords,
-		hook,
-		time.Hour,
-		slog.New(slog.DiscardHandler),
-	)
+	links, err := ui.NewLinks("http://auth.test")
+	require.NoError(t, err)
+
+	mailer := &mail.Recorder{}
+
+	service, err := auth.NewService(repository, auth.Options{
+		Passwords:     passwords,
+		FirstUserHook: hook,
+		SessionTTL:    time.Hour,
+		Mailer:        mailer,
+		Links:         links,
+		Logger:        slog.New(slog.DiscardHandler),
+	})
 	require.NoError(t, err)
 
 	h := &harness{
 		db:         db,
+		mailer:     mailer,
 		hook:       hook,
 		signUpOpen: true,
 		mayAddUser: func(string) bool { return true },
@@ -103,9 +116,20 @@ func newHarness(t *testing.T) *harness {
 
 	// Who may register is decided by the composition root, not by this package, so the test
 	// supplies the decision the same way.
+	built := make([]*oidc.Provider, 0, len(providers))
+
+	for _, config := range providers {
+		provider, err := oidc.New(config, nil)
+		require.NoError(t, err)
+
+		built = append(built, provider)
+	}
+
 	handler, err := ui.NewHandler(service, testPolicy{h: h}, ui.Config{
 		SessionCookieName: sessionCookieName,
 		SecureCookies:     false,
+		Links:             links,
+		Providers:         built,
 	}, slog.New(slog.DiscardHandler))
 	require.NoError(t, err)
 
@@ -213,7 +237,12 @@ func body(t *testing.T, response *http.Response) string {
 }
 
 func setupForm() url.Values {
-	return url.Values{"username": {"ada"}, "name": {"Ada"}, "password": {"correct horse"}}
+	return url.Values{
+		"username": {"ada"},
+		"email":    {"ada@example.com"},
+		"name":     {"Ada"},
+		"password": {"correct horse"},
+	}
 }
 
 func TestSetupRunsOnceAndMakesTheFirstUserKnownToTheHook(t *testing.T) {
@@ -289,14 +318,14 @@ func TestLoginRejectsBadCredentialsWithoutRevealingWhichPartWasWrong(t *testing.
 	wrongPassword := h.post(
 		t,
 		"/login",
-		url.Values{"username": {"ada"}, "password": {"wrong password"}},
+		url.Values{"login": {"ada"}, "password": {"wrong password"}},
 	)
 	require.Equal(t, http.StatusUnauthorized, wrongPassword.StatusCode)
 
 	unknownUser := h.post(
 		t,
 		"/login",
-		url.Values{"username": {"grace"}, "password": {"wrong password"}},
+		url.Values{"login": {"grace"}, "password": {"wrong password"}},
 	)
 	require.Equal(t, http.StatusUnauthorized, unknownUser.StatusCode)
 
@@ -351,7 +380,7 @@ func TestChangePasswordRotatesTheHashAndKeepsOnlyTheCurrentSession(t *testing.T)
 		other.post(
 			t,
 			"/login",
-			url.Values{"username": {"ada"}, "password": {"correct horse"}},
+			url.Values{"login": {"ada"}, "password": {"correct horse"}},
 		).StatusCode,
 	)
 	require.Equal(t, 2, h.countSessions(t))
@@ -409,7 +438,11 @@ func TestClosedSignUpIsHidden(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, h.get(t, "/register").StatusCode)
 	assert.Equal(t, http.StatusNotFound, h.post(t, "/register", url.Values{
-		"username": {"mallory"}, "password": {"a good long secret"},
+		"username": {
+			"mallory",
+		},
+		"email":    {"mallory@example.com"},
+		"password": {"a good long secret"},
 	}).StatusCode)
 }
 
@@ -437,11 +470,15 @@ func TestAddingUsersTakesThePermissionEvenWithSignUpOpen(t *testing.T) {
 	assert.Equal(t, "/login?next=%2Fusers%2Fnew", response.Header.Get("Location"))
 
 	require.Equal(t, http.StatusSeeOther, stranger.post(t, "/register", url.Values{
-		"username": {"grace"}, "password": {"another good secret"},
+		"username": {"grace"}, "email": {"grace@example.com"}, "password": {"another good secret"},
 	}).StatusCode)
 	assert.Equal(t, http.StatusNotFound, stranger.get(t, "/users/new").StatusCode)
 	assert.Equal(t, http.StatusNotFound, stranger.post(t, "/users/new", url.Values{
-		"username": {"mallory"}, "password": {"a good long secret"},
+		"username": {
+			"mallory",
+		},
+		"email":    {"mallory@example.com"},
+		"password": {"a good long secret"},
 	}).StatusCode)
 
 	assert.Equal(t, http.StatusOK, h.get(t, "/users/new").StatusCode)
@@ -455,8 +492,13 @@ func TestAddingAnAccountForSomeoneElseKeepsYouSignedIn(t *testing.T) {
 	before := h.sessionCookie(t)
 
 	response := h.post(t, "/users/new", url.Values{
-		"username": {"grace"}, "name": {"Grace"}, "password": {"another good secret"},
-		"next": {"/admin/users"},
+		"username": {
+			"grace",
+		},
+		"email":    {"grace@example.com"},
+		"name":     {"Grace"},
+		"password": {"another good secret"},
+		"next":     {"/admin/users"},
 	})
 	require.Equal(t, http.StatusSeeOther, response.StatusCode)
 	assert.Equal(t, "/admin/users", response.Header.Get("Location"))

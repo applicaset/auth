@@ -5,7 +5,6 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -13,10 +12,9 @@ import (
 	"time"
 
 	"github.com/buildset/buildset/auth"
-	"github.com/buildset/buildset/auth/hash"
+	"github.com/buildset/buildset/auth/backend"
 	"github.com/buildset/buildset/auth/httpapi"
-	authpostgres "github.com/buildset/buildset/auth/postgres"
-	authsqlite "github.com/buildset/buildset/auth/sqlite"
+	"github.com/buildset/buildset/auth/kit"
 	authui "github.com/buildset/buildset/auth/ui"
 	authzclient "github.com/buildset/buildset/authz/client"
 	"github.com/buildset/buildset/pkg/config"
@@ -31,24 +29,20 @@ const schema = "auth"
 
 var errInvalidConfig = errors.New("invalid configuration")
 
-// Expiry is enforced on every lookup; sweeping only keeps the table from growing forever.
-const expiredSessionSweepInterval = time.Hour
-
 type Config struct {
 	config.Server
 
 	Log      config.Log
 	Cookie   config.Cookie
 	Database storage.Config
-
-	BcryptCost       int
-	SessionTTL       time.Duration
-	RegistrationOpen bool
+	Auth     kit.Config
 	// AdminRole is the application's vocabulary; authz only stores the string.
 	AdminRole string
 
 	AuthzURL    string
 	HTTPTimeout time.Duration
+	// Mailer replaces the SMTP sender Auth.Mail describes. Tests set it to read what was sent.
+	Mailer auth.Mailer
 }
 
 func LoadConfig(ctx context.Context) (*Config, error) {
@@ -62,17 +56,20 @@ func LoadConfig(ctx context.Context) (*Config, error) {
 		return nil, err
 	}
 
+	authConfig, err := kit.LoadConfig()
+	if err != nil {
+		return nil, err
+	}
+
 	cfg := &Config{
-		Server:           config.LoadServer(),
-		Log:              log,
-		Cookie:           config.LoadCookie(),
-		Database:         storage.Load(),
-		BcryptCost:       env.GetInt("AUTH_BCRYPT_COST", 12),
-		SessionTTL:       env.GetDuration("AUTH_SESSION_TTL", 14*24*time.Hour),
-		RegistrationOpen: env.GetBool("AUTH_REGISTRATION_OPEN", true),
-		AdminRole:        env.GetString("AUTH_ADMIN_ROLE", "admin"),
-		AuthzURL:         authzURL,
-		HTTPTimeout:      env.GetDuration("HTTP_TIMEOUT", 5*time.Second),
+		Server:      config.LoadServer(),
+		Log:         log,
+		Cookie:      config.LoadCookie(),
+		Database:    storage.Load(),
+		Auth:        authConfig,
+		AdminRole:   env.GetString("AUTH_ADMIN_ROLE", "admin"),
+		AuthzURL:    authzURL,
+		HTTPTimeout: env.GetDuration("HTTP_TIMEOUT", 5*time.Second),
 	}
 
 	if err := cfg.Validate(ctx); err != nil {
@@ -91,21 +88,8 @@ func (c *Config) Validate(ctx context.Context) error {
 		return err
 	}
 
-	// bcrypt rejects costs outside [4, 31]; bounding here fails at boot rather than per login.
-	if c.BcryptCost < 10 || c.BcryptCost > 31 {
-		return fmt.Errorf(
-			"%w: AUTH_BCRYPT_COST must be between 10 and 31, got %d",
-			errInvalidConfig,
-			c.BcryptCost,
-		)
-	}
-
-	if c.SessionTTL <= 0 {
-		return fmt.Errorf(
-			"%w: AUTH_SESSION_TTL must be positive, got %s",
-			errInvalidConfig,
-			c.SessionTTL,
-		)
+	if err := c.Auth.Validate(); err != nil {
+		return err
 	}
 
 	if c.AdminRole == "" {
@@ -116,47 +100,35 @@ func (c *Config) Validate(ctx context.Context) error {
 }
 
 type Service struct {
-	db      *sql.DB
+	handle  *storage.Handle
 	service *auth.Service
 	routes  http.Handler
 	logger  *slog.Logger
 }
 
 func New(ctx context.Context, cfg *Config, logger *slog.Logger) (*Service, error) {
-	db, err := storage.Open(ctx, cfg.Database, schema)
+	handle, err := storage.OpenHandle(ctx, cfg.Database, schema)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 
-	service, routes, err := build(ctx, cfg, db, logger)
+	service, routes, err := build(ctx, cfg, handle, logger)
 	if err != nil {
-		_ = db.Close()
+		_ = handle.Close()
 
 		return nil, err
 	}
 
-	return &Service{db: db, service: service, routes: routes, logger: logger}, nil
+	return &Service{handle: handle, service: service, routes: routes, logger: logger}, nil
 }
 
 func build(
 	ctx context.Context,
 	cfg *Config,
-	db *sql.DB,
+	handle *storage.Handle,
 	logger *slog.Logger,
 ) (*auth.Service, http.Handler, error) {
-	bcryptAlgorithm, err := hash.NewBcrypt(cfg.BcryptCost)
-	if err != nil {
-		return nil, nil, fmt.Errorf("build bcrypt algorithm: %w", err)
-	}
-
-	// TODO: register argon2id here and prefer it once implemented. Existing bcrypt hashes keep
-	// verifying, and each user is upgraded on their next login.
-	passwords, err := hash.NewRegistry(bcryptAlgorithm)
-	if err != nil {
-		return nil, nil, fmt.Errorf("build password registry: %w", err)
-	}
-
-	repository, err := newRepository(ctx, cfg.Database.Driver, db)
+	repository, err := backend.New(ctx, cfg.Database.Driver, handle)
 	if err != nil {
 		return nil, nil, fmt.Errorf("build auth repository: %w", err)
 	}
@@ -166,23 +138,20 @@ func build(
 		return nil, nil, fmt.Errorf("build authz client: %w", err)
 	}
 
-	service, err := auth.NewService(repository, passwords,
-		firstUserHook(authzClient, cfg.AdminRole, logger), cfg.SessionTTL, logger)
-	if err != nil {
-		return nil, nil, fmt.Errorf("build auth service: %w", err)
-	}
-
-	pages, err := authui.NewHandler(
-		service,
-		registrationPolicy(cfg.RegistrationOpen, authzClient),
-		authui.Config{
+	service, pages, err := kit.Build(kit.Options{
+		Config:        cfg.Auth,
+		Repository:    repository,
+		FirstUserHook: firstUserHook(authzClient, cfg.AdminRole, logger),
+		Registration:  registrationPolicy(cfg.Auth.RegistrationOpen, authzClient),
+		Cookie: authui.Config{
 			SessionCookieName: cfg.Cookie.Name,
 			SecureCookies:     cfg.Cookie.Secure,
 		},
-		logger,
-	)
+		Mailer: cfg.Mailer,
+		Logger: logger,
+	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("build auth handler: %w", err)
+		return nil, nil, err
 	}
 
 	api, err := httpapi.NewHandler(service, logger)
@@ -201,45 +170,12 @@ func build(
 
 func (s *Service) Routes() http.Handler { return s.routes }
 
-func (s *Service) Ping(ctx context.Context) error {
-	if err := s.db.PingContext(ctx); err != nil {
-		return fmt.Errorf("ping database: %w", err)
-	}
+func (s *Service) Ping(ctx context.Context) error { return s.handle.Ping(ctx) }
 
-	return nil
-}
+func (s *Service) Close() error { return s.handle.Close() }
 
-func (s *Service) Close() error {
-	if err := s.db.Close(); err != nil {
-		return fmt.Errorf("close database: %w", err)
-	}
-
-	return nil
-}
-
-// SweepExpiredSessions runs until the context is cancelled.
-func (s *Service) SweepExpiredSessions(ctx context.Context) {
-	ticker := time.NewTicker(expiredSessionSweepInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			deleted, err := s.service.DeleteExpiredSessions(ctx)
-			if err != nil {
-				s.logger.WarnContext(ctx, "sweep expired sessions", slog.Any("error", err))
-
-				continue
-			}
-
-			if deleted > 0 {
-				s.logger.InfoContext(ctx, "swept expired sessions", slog.Int64("count", deleted))
-			}
-		}
-	}
-}
+// Sweep deletes expired sessions and tokens until the context is cancelled.
+func (s *Service) Sweep(ctx context.Context) { kit.Sweep(ctx, s.service, s.logger) }
 
 func Run(ctx context.Context) error {
 	cfg, err := LoadConfig(ctx)
@@ -269,16 +205,9 @@ func Run(ctx context.Context) error {
 		Ready:           service.Ping,
 		// Browsers post sign-in forms here through the gateway. Cross-origin protection applies,
 		// and an inbound request identifier is not trusted.
-		CrossOrigin:    true,
-		TrustRequestID: false,
-		Background:     []func(context.Context){service.SweepExpiredSessions},
+		CrossOrigin:       true,
+		CrossOriginBypass: authui.CrossOriginBypass,
+		TrustRequestID:    false,
+		Background:        []func(context.Context){service.Sweep},
 	})
-}
-
-func newRepository(ctx context.Context, driver string, db *sql.DB) (auth.Repository, error) {
-	if driver == storage.DriverPostgres {
-		return authpostgres.NewRepository(ctx, db)
-	}
-
-	return authsqlite.NewRepository(ctx, db)
 }
