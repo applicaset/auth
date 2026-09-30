@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/buildset/buildset/auth"
+	"github.com/applicaset/buildset/auth"
 )
 
 const pathSettings = "/settings"

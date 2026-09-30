@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/buildset/buildset/auth"
+	"github.com/applicaset/buildset/auth"
 )
 
 // sqlStater is implemented by the driver's error type. Matching the method rather than the concrete

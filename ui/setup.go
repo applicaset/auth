@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/buildset/buildset/auth"
+	"github.com/applicaset/buildset/auth"
 )
 
 const setupTitle = "Set up"

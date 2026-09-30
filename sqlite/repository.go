@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/buildset/buildset/auth"
-	"github.com/buildset/buildset/pkg/sqlmigrate"
+	"github.com/applicaset/buildset/auth"
+	"github.com/applicaset/buildset/pkg/sqlmigrate"
 	sqlitedriver "modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 )

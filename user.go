@@ -3,7 +3,7 @@ package auth
 import (
 	"time"
 
-	"github.com/buildset/buildset/pkg/ref"
+	"github.com/applicaset/buildset/pkg/ref"
 )
 
 type User struct {

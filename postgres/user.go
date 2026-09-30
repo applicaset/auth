@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/buildset/buildset/auth"
+	"github.com/applicaset/buildset/auth"
 )
 
 const tableUsers = "users"

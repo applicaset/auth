@@ -9,7 +9,7 @@ import (
 	"time"
 	"uuid"
 
-	"github.com/buildset/buildset/pkg/mail"
+	"github.com/applicaset/buildset/pkg/mail"
 )
 
 type Mailer interface {

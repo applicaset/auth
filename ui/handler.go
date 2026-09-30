@@ -11,9 +11,9 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/buildset/buildset/auth"
-	"github.com/buildset/buildset/auth/oidc"
-	"github.com/buildset/buildset/pkg/safeurl"
+	"github.com/applicaset/buildset/auth"
+	"github.com/applicaset/buildset/auth/oidc"
+	"github.com/applicaset/buildset/pkg/safeurl"
 )
 
 const newUserPath = "/users/new"

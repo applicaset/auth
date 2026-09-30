@@ -4,10 +4,10 @@ package backend
 import (
 	"context"
 
-	"github.com/buildset/buildset/auth"
-	authpostgres "github.com/buildset/buildset/auth/postgres"
-	authsqlite "github.com/buildset/buildset/auth/sqlite"
-	"github.com/buildset/buildset/pkg/storage"
+	"github.com/applicaset/buildset/auth"
+	authpostgres "github.com/applicaset/buildset/auth/postgres"
+	authsqlite "github.com/applicaset/buildset/auth/sqlite"
+	"github.com/applicaset/buildset/pkg/storage"
 )
 
 func New(ctx context.Context, driver string, handle *storage.Handle) (auth.Repository, error) {

@@ -3,9 +3,9 @@ package httpapi
 import (
 	"errors"
 
-	"github.com/buildset/buildset/auth"
-	"github.com/buildset/buildset/auth/hash"
-	"github.com/buildset/buildset/pkg/httpx"
+	"github.com/applicaset/buildset/auth"
+	"github.com/applicaset/buildset/auth/hash"
+	"github.com/applicaset/buildset/pkg/httpx"
 )
 
 // Classify is the one place auth's errors become a wire code and a sentence for a visitor. The

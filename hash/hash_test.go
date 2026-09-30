@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/buildset/buildset/auth/hash"
+	"github.com/applicaset/buildset/auth/hash"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

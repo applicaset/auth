@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/buildset/buildset/auth"
+	"github.com/applicaset/buildset/auth"
 )
 
 const tableTokens = "tokens"
