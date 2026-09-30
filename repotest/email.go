@@ -10,48 +10,48 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func runEmail(t *testing.T, newRepository New) {
+func runEmail(t *testing.T, newRepositories New) {
 	t.Helper()
 
-	t.Run("InsertUser rejects a duplicate email as an email conflict", func(t *testing.T) {
-		repository := newRepository(t)
+	t.Run("User.Insert rejects a duplicate email as an email conflict", func(t *testing.T) {
+		repos := newRepositories(t)
 
 		alice := user("alice")
 		alice.Email = "alice@example.com"
-		require.NoError(t, repository.InsertUser(context.Background(), alice))
+		require.NoError(t, repos.User.Insert(context.Background(), alice))
 
 		other := user("other")
 		other.Email = "alice@example.com"
 
-		err := repository.InsertUser(context.Background(), other)
+		err := repos.User.Insert(context.Background(), other)
 		require.ErrorIs(t, err, auth.ErrEmailTaken)
 		require.NotErrorIs(t, err, auth.ErrUsernameTaken)
 	})
 
 	t.Run("any number of users may have no email", func(t *testing.T) {
-		repository := newRepository(t)
+		repos := newRepositories(t)
 
-		require.NoError(t, repository.InsertUser(context.Background(), user("alice")))
-		require.NoError(t, repository.InsertUser(context.Background(), user("bob")))
+		require.NoError(t, repos.User.Insert(context.Background(), user("alice")))
+		require.NoError(t, repos.User.Insert(context.Background(), user("bob")))
 	})
 
-	t.Run("UpdateUser rejects an email another account holds", func(t *testing.T) {
-		repository := newRepository(t)
+	t.Run("User.Update rejects an email another account holds", func(t *testing.T) {
+		repos := newRepositories(t)
 
 		alice := user("alice")
 		alice.Email = "alice@example.com"
 		bob := user("bob")
-		require.NoError(t, repository.InsertUser(context.Background(), alice))
-		require.NoError(t, repository.InsertUser(context.Background(), bob))
+		require.NoError(t, repos.User.Insert(context.Background(), alice))
+		require.NoError(t, repos.User.Insert(context.Background(), bob))
 
 		bob.Email = "alice@example.com"
 
-		err := repository.UpdateUser(context.Background(), bob)
+		err := repos.User.Update(context.Background(), bob)
 		require.ErrorIs(t, err, auth.ErrEmailTaken)
 	})
 
 	t.Run("round-trips email, verification and an empty password", func(t *testing.T) {
-		repository := newRepository(t)
+		repos := newRepositories(t)
 
 		verified := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
 
@@ -59,9 +59,9 @@ func runEmail(t *testing.T, newRepository New) {
 		alice.Email = "alice@example.com"
 		alice.EmailVerifiedAt = &verified
 		alice.PasswordHash = ""
-		require.NoError(t, repository.InsertUser(context.Background(), alice))
+		require.NoError(t, repos.User.Insert(context.Background(), alice))
 
-		stored, err := repository.GetUserByEmail(context.Background(), "alice@example.com")
+		stored, err := repos.User.GetByEmail(context.Background(), "alice@example.com")
 		require.NoError(t, err)
 
 		assert.Equal(t, alice.ID, stored.ID)
@@ -72,37 +72,37 @@ func runEmail(t *testing.T, newRepository New) {
 
 		stored.Email = ""
 		stored.EmailVerifiedAt = nil
-		require.NoError(t, repository.UpdateUser(context.Background(), stored))
+		require.NoError(t, repos.User.Update(context.Background(), stored))
 
-		cleared, err := repository.GetUser(context.Background(), alice.ID)
+		cleared, err := repos.User.Get(context.Background(), alice.ID)
 		require.NoError(t, err)
 		assert.Empty(t, cleared.Email)
 		assert.Nil(t, cleared.EmailVerifiedAt)
 	})
 
-	t.Run("GetUserByEmail reports a missing account", func(t *testing.T) {
-		repository := newRepository(t)
+	t.Run("User.GetByEmail reports a missing account", func(t *testing.T) {
+		repos := newRepositories(t)
 
-		_, err := repository.GetUserByEmail(context.Background(), "nobody@example.com")
+		_, err := repos.User.GetByEmail(context.Background(), "nobody@example.com")
 		require.ErrorIs(t, err, auth.ErrUserNotFound)
 	})
 }
 
-func runTokens(t *testing.T, newRepository New) {
+func runTokens(t *testing.T, newRepositories New) {
 	t.Helper()
 
 	now := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
 
-	t.Run("ConsumeToken returns the token once", func(t *testing.T) {
-		repository := newRepository(t)
+	t.Run("Token.Consume returns the token once", func(t *testing.T) {
+		repos := newRepositories(t)
 
 		alice := user("alice")
-		require.NoError(t, repository.InsertUser(context.Background(), alice))
+		require.NoError(t, repos.User.Insert(context.Background(), alice))
 
 		original := token("hash-1", auth.TokenResetPassword, alice.ID, now.Add(time.Hour))
-		require.NoError(t, repository.InsertToken(context.Background(), original))
+		require.NoError(t, repos.Token.Insert(context.Background(), original))
 
-		stored, err := repository.ConsumeToken(
+		stored, err := repos.Token.Consume(
 			context.Background(), "hash-1", auth.TokenResetPassword, now)
 		require.NoError(t, err)
 
@@ -111,7 +111,7 @@ func runTokens(t *testing.T, newRepository New) {
 		assert.Equal(t, original.Email, stored.Email)
 		assert.True(t, original.ExpiresAt.Equal(stored.ExpiresAt))
 
-		_, err = repository.ConsumeToken(
+		_, err = repos.Token.Consume(
 			context.Background(),
 			"hash-1",
 			auth.TokenResetPassword,
@@ -120,59 +120,59 @@ func runTokens(t *testing.T, newRepository New) {
 		require.ErrorIs(t, err, auth.ErrTokenNotFound)
 	})
 
-	t.Run("ConsumeToken ignores a token for another purpose", func(t *testing.T) {
-		repository := newRepository(t)
+	t.Run("Token.Consume ignores a token for another purpose", func(t *testing.T) {
+		repos := newRepositories(t)
 
-		require.NoError(t, repository.InsertToken(context.Background(),
+		require.NoError(t, repos.Token.Insert(context.Background(),
 			token("hash-1", auth.TokenVerifyEmail, "", now.Add(time.Hour))))
 
-		_, err := repository.ConsumeToken(context.Background(), "hash-1", auth.TokenEmailLogin, now)
+		_, err := repos.Token.Consume(context.Background(), "hash-1", auth.TokenEmailLogin, now)
 		require.ErrorIs(t, err, auth.ErrTokenNotFound)
 
-		_, err = repository.ConsumeToken(context.Background(), "hash-1", auth.TokenVerifyEmail, now)
+		_, err = repos.Token.Consume(context.Background(), "hash-1", auth.TokenVerifyEmail, now)
 		require.NoError(t, err, "the wrong purpose must not use the token up")
 	})
 
-	t.Run("ConsumeToken refuses a token expiring exactly now", func(t *testing.T) {
-		repository := newRepository(t)
+	t.Run("Token.Consume refuses a token expiring exactly now", func(t *testing.T) {
+		repos := newRepositories(t)
 
-		require.NoError(t, repository.InsertToken(context.Background(),
+		require.NoError(t, repos.Token.Insert(context.Background(),
 			token("hash-1", auth.TokenEmailLogin, "", now)))
 
-		_, err := repository.ConsumeToken(context.Background(), "hash-1", auth.TokenEmailLogin, now)
+		_, err := repos.Token.Consume(context.Background(), "hash-1", auth.TokenEmailLogin, now)
 		require.ErrorIs(t, err, auth.ErrTokenNotFound)
 	})
 
 	t.Run("a token without a user round-trips its email", func(t *testing.T) {
-		repository := newRepository(t)
+		repos := newRepositories(t)
 
 		original := token("hash-1", auth.TokenEmailLogin, "", now.Add(time.Hour))
 		original.Email = "new@example.com"
-		require.NoError(t, repository.InsertToken(context.Background(), original))
+		require.NoError(t, repos.Token.Insert(context.Background(), original))
 
-		stored, err := repository.ConsumeToken(
+		stored, err := repos.Token.Consume(
 			context.Background(), "hash-1", auth.TokenEmailLogin, now)
 		require.NoError(t, err)
 		assert.Empty(t, stored.UserID)
 		assert.Equal(t, "new@example.com", stored.Email)
 	})
 
-	t.Run("DeleteTokensByUser removes one purpose only", func(t *testing.T) {
-		repository := newRepository(t)
+	t.Run("Token.DeleteByUser removes one purpose only", func(t *testing.T) {
+		repos := newRepositories(t)
 
 		alice := user("alice")
-		require.NoError(t, repository.InsertUser(context.Background(), alice))
-		require.NoError(t, repository.InsertToken(context.Background(),
+		require.NoError(t, repos.User.Insert(context.Background(), alice))
+		require.NoError(t, repos.Token.Insert(context.Background(),
 			token("reset", auth.TokenResetPassword, alice.ID, now.Add(time.Hour))))
-		require.NoError(t, repository.InsertToken(context.Background(),
+		require.NoError(t, repos.Token.Insert(context.Background(),
 			token("verify", auth.TokenVerifyEmail, alice.ID, now.Add(time.Hour))))
 
 		require.NoError(
 			t,
-			repository.DeleteTokensByUser(context.Background(), alice.ID, auth.TokenResetPassword),
+			repos.Token.DeleteByUser(context.Background(), alice.ID, auth.TokenResetPassword),
 		)
 
-		_, err := repository.ConsumeToken(
+		_, err := repos.Token.Consume(
 			context.Background(),
 			"reset",
 			auth.TokenResetPassword,
@@ -180,38 +180,38 @@ func runTokens(t *testing.T, newRepository New) {
 		)
 		require.ErrorIs(t, err, auth.ErrTokenNotFound)
 
-		_, err = repository.ConsumeToken(context.Background(), "verify", auth.TokenVerifyEmail, now)
+		_, err = repos.Token.Consume(context.Background(), "verify", auth.TokenVerifyEmail, now)
 		require.NoError(t, err)
 	})
 
-	t.Run("DeleteExpiredTokens is inclusive at the boundary", func(t *testing.T) {
-		repository := newRepository(t)
+	t.Run("Token.DeleteExpired is inclusive at the boundary", func(t *testing.T) {
+		repos := newRepositories(t)
 
 		for hash, expires := range map[string]time.Time{
 			"past":   now.Add(-time.Hour),
 			"exact":  now,
 			"future": now.Add(time.Hour),
 		} {
-			require.NoError(t, repository.InsertToken(context.Background(),
+			require.NoError(t, repos.Token.Insert(context.Background(),
 				token(hash, auth.TokenEmailLogin, "", expires)))
 		}
 
-		deleted, err := repository.DeleteExpiredTokens(context.Background(), now)
+		deleted, err := repos.Token.DeleteExpired(context.Background(), now)
 		require.NoError(t, err)
 		assert.Equal(t, int64(2), deleted)
 	})
 
-	t.Run("DeleteUser cascades to tokens", func(t *testing.T) {
-		repository := newRepository(t)
+	t.Run("User.Delete cascades to tokens", func(t *testing.T) {
+		repos := newRepositories(t)
 
 		alice := user("alice")
-		require.NoError(t, repository.InsertUser(context.Background(), alice))
-		require.NoError(t, repository.InsertToken(context.Background(),
+		require.NoError(t, repos.User.Insert(context.Background(), alice))
+		require.NoError(t, repos.Token.Insert(context.Background(),
 			token("hash-1", auth.TokenResetPassword, alice.ID, now.Add(time.Hour))))
 
-		require.NoError(t, repository.DeleteUser(context.Background(), alice.ID))
+		require.NoError(t, repos.User.Delete(context.Background(), alice.ID))
 
-		_, err := repository.ConsumeToken(
+		_, err := repos.Token.Consume(
 			context.Background(),
 			"hash-1",
 			auth.TokenResetPassword,
@@ -221,58 +221,58 @@ func runTokens(t *testing.T, newRepository New) {
 	})
 }
 
-func runIdentities(t *testing.T, newRepository New) {
+func runIdentities(t *testing.T, newRepositories New) {
 	t.Helper()
 
-	t.Run("InsertIdentity rejects a subject already linked", func(t *testing.T) {
-		repository := newRepository(t)
+	t.Run("Identity.Insert rejects a subject already linked", func(t *testing.T) {
+		repos := newRepositories(t)
 
 		alice := user("alice")
 		bob := user("bob")
-		require.NoError(t, repository.InsertUser(context.Background(), alice))
-		require.NoError(t, repository.InsertUser(context.Background(), bob))
-		require.NoError(t, repository.InsertIdentity(context.Background(),
+		require.NoError(t, repos.User.Insert(context.Background(), alice))
+		require.NoError(t, repos.User.Insert(context.Background(), bob))
+		require.NoError(t, repos.Identity.Insert(context.Background(),
 			identity("google", "sub-1", alice.ID)))
 
-		err := repository.InsertIdentity(context.Background(), identity("google", "sub-1", bob.ID))
+		err := repos.Identity.Insert(context.Background(), identity("google", "sub-1", bob.ID))
 		require.ErrorIs(t, err, auth.ErrIdentityTaken)
 	})
 
-	t.Run("GetIdentity round-trips and reports a missing one", func(t *testing.T) {
-		repository := newRepository(t)
+	t.Run("Identity.Get round-trips and reports a missing one", func(t *testing.T) {
+		repos := newRepositories(t)
 
 		alice := user("alice")
-		require.NoError(t, repository.InsertUser(context.Background(), alice))
+		require.NoError(t, repos.User.Insert(context.Background(), alice))
 
 		original := identity("google", "sub-1", alice.ID)
 		original.Email = "alice@example.com"
-		require.NoError(t, repository.InsertIdentity(context.Background(), original))
+		require.NoError(t, repos.Identity.Insert(context.Background(), original))
 
-		stored, err := repository.GetIdentity(context.Background(), "google", "sub-1")
+		stored, err := repos.Identity.Get(context.Background(), "google", "sub-1")
 		require.NoError(t, err)
 		assert.Equal(t, alice.ID, stored.UserID)
 		assert.Equal(t, "alice@example.com", stored.Email)
 		assert.True(t, original.CreatedAt.Equal(stored.CreatedAt))
 
-		_, err = repository.GetIdentity(context.Background(), "apple", "sub-1")
+		_, err = repos.Identity.Get(context.Background(), "apple", "sub-1")
 		require.ErrorIs(t, err, auth.ErrIdentityNotFound)
 	})
 
-	t.Run("ListIdentities orders by provider then subject", func(t *testing.T) {
-		repository := newRepository(t)
+	t.Run("Identity.ListByUser orders by provider then subject", func(t *testing.T) {
+		repos := newRepositories(t)
 
 		alice := user("alice")
-		require.NoError(t, repository.InsertUser(context.Background(), alice))
+		require.NoError(t, repos.User.Insert(context.Background(), alice))
 
 		for _, linked := range []*auth.Identity{
 			identity("google", "b", alice.ID),
 			identity("apple", "z", alice.ID),
 			identity("google", "a", alice.ID),
 		} {
-			require.NoError(t, repository.InsertIdentity(context.Background(), linked))
+			require.NoError(t, repos.Identity.Insert(context.Background(), linked))
 		}
 
-		identities, err := repository.ListIdentities(context.Background(), alice.ID)
+		identities, err := repos.Identity.ListByUser(context.Background(), alice.ID)
 		require.NoError(t, err)
 		require.Len(t, identities, 3)
 
@@ -286,39 +286,39 @@ func runIdentities(t *testing.T, newRepository New) {
 		)
 	})
 
-	t.Run("DeleteIdentity removes only the owner's link", func(t *testing.T) {
-		repository := newRepository(t)
+	t.Run("Identity.Delete removes only the owner's link", func(t *testing.T) {
+		repos := newRepositories(t)
 
 		alice := user("alice")
 		bob := user("bob")
-		require.NoError(t, repository.InsertUser(context.Background(), alice))
-		require.NoError(t, repository.InsertUser(context.Background(), bob))
-		require.NoError(t, repository.InsertIdentity(context.Background(),
+		require.NoError(t, repos.User.Insert(context.Background(), alice))
+		require.NoError(t, repos.User.Insert(context.Background(), bob))
+		require.NoError(t, repos.Identity.Insert(context.Background(),
 			identity("google", "sub-1", alice.ID)))
 
-		err := repository.DeleteIdentity(context.Background(), bob.ID, "google", "sub-1")
+		err := repos.Identity.Delete(context.Background(), bob.ID, "google", "sub-1")
 		require.ErrorIs(t, err, auth.ErrIdentityNotFound)
 
 		require.NoError(
 			t,
-			repository.DeleteIdentity(context.Background(), alice.ID, "google", "sub-1"),
+			repos.Identity.Delete(context.Background(), alice.ID, "google", "sub-1"),
 		)
 
-		_, err = repository.GetIdentity(context.Background(), "google", "sub-1")
+		_, err = repos.Identity.Get(context.Background(), "google", "sub-1")
 		require.ErrorIs(t, err, auth.ErrIdentityNotFound)
 	})
 
-	t.Run("DeleteUser cascades to identities", func(t *testing.T) {
-		repository := newRepository(t)
+	t.Run("User.Delete cascades to identities", func(t *testing.T) {
+		repos := newRepositories(t)
 
 		alice := user("alice")
-		require.NoError(t, repository.InsertUser(context.Background(), alice))
-		require.NoError(t, repository.InsertIdentity(context.Background(),
+		require.NoError(t, repos.User.Insert(context.Background(), alice))
+		require.NoError(t, repos.Identity.Insert(context.Background(),
 			identity("google", "sub-1", alice.ID)))
 
-		require.NoError(t, repository.DeleteUser(context.Background(), alice.ID))
+		require.NoError(t, repos.User.Delete(context.Background(), alice.ID))
 
-		_, err := repository.GetIdentity(context.Background(), "google", "sub-1")
+		_, err := repos.Identity.Get(context.Background(), "google", "sub-1")
 		require.ErrorIs(t, err, auth.ErrIdentityNotFound)
 	})
 }

@@ -37,8 +37,18 @@ func sessionColumns() []string {
 	}
 }
 
-func (r *Repository) InsertSession(ctx context.Context, session *auth.Session) error {
-	_, err := r.builder().
+type SessionRepository struct {
+	db *sql.DB
+}
+
+var _ auth.SessionRepository = (*SessionRepository)(nil)
+
+func NewSessionRepository(db *sql.DB) *SessionRepository {
+	return &SessionRepository{db: db}
+}
+
+func (r *SessionRepository) Insert(ctx context.Context, session *auth.Session) error {
+	_, err := builder(r.db).
 		Insert(tableSessions).
 		Columns(sessionColumns()...).
 		Values(
@@ -59,7 +69,7 @@ func (r *Repository) InsertSession(ctx context.Context, session *auth.Session) e
 	return nil
 }
 
-func (r *Repository) GetSessionByTokenHash(
+func (r *SessionRepository) GetByTokenHash(
 	ctx context.Context,
 	tokenHash string,
 ) (*auth.Session, error) {
@@ -68,7 +78,7 @@ func (r *Repository) GetSessionByTokenHash(
 		createdAt, expiresAt, lastSeenAt string
 	)
 
-	err := r.builder().
+	err := builder(r.db).
 		Select(sessionColumns()...).
 		From(tableSessions).
 		Where(squirrel.Eq{sessionColumnTokenHash: tokenHash}).
@@ -104,8 +114,8 @@ func (r *Repository) GetSessionByTokenHash(
 	return &session, nil
 }
 
-func (r *Repository) TouchSession(ctx context.Context, id string, lastSeen time.Time) error {
-	_, err := r.builder().
+func (r *SessionRepository) Touch(ctx context.Context, id string, lastSeen time.Time) error {
+	_, err := builder(r.db).
 		Update(tableSessions).
 		Set(sessionColumnLastSeen, formatTime(lastSeen)).
 		Where(squirrel.Eq{sessionColumnID: id}).
@@ -117,8 +127,8 @@ func (r *Repository) TouchSession(ctx context.Context, id string, lastSeen time.
 	return nil
 }
 
-func (r *Repository) DeleteSessionByTokenHash(ctx context.Context, tokenHash string) error {
-	_, err := r.builder().
+func (r *SessionRepository) DeleteByTokenHash(ctx context.Context, tokenHash string) error {
+	_, err := builder(r.db).
 		Delete(tableSessions).
 		Where(squirrel.Eq{sessionColumnTokenHash: tokenHash}).
 		ExecContext(ctx)
@@ -129,12 +139,12 @@ func (r *Repository) DeleteSessionByTokenHash(ctx context.Context, tokenHash str
 	return nil
 }
 
-func (r *Repository) DeleteSessionsByUser(
+func (r *SessionRepository) DeleteByUser(
 	ctx context.Context,
 	userID, exceptSessionID string,
 ) error {
 	// An empty exceptSessionID matches no row, so every session of the user is removed.
-	_, err := r.builder().
+	_, err := builder(r.db).
 		Delete(tableSessions).
 		Where(squirrel.Eq{sessionColumnUserID: userID}).
 		Where(squirrel.NotEq{sessionColumnID: exceptSessionID}).
@@ -146,8 +156,8 @@ func (r *Repository) DeleteSessionsByUser(
 	return nil
 }
 
-func (r *Repository) DeleteExpiredSessions(ctx context.Context, now time.Time) (int64, error) {
-	result, err := r.builder().
+func (r *SessionRepository) DeleteExpired(ctx context.Context, now time.Time) (int64, error) {
+	result, err := builder(r.db).
 		Delete(tableSessions).
 		Where(squirrel.LtOrEq{sessionColumnExpiresAt: formatTime(now)}).
 		ExecContext(ctx)

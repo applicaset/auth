@@ -36,8 +36,18 @@ func userColumns() []string {
 	}
 }
 
-func (r *Repository) InsertUser(ctx context.Context, user *auth.User) error {
-	_, err := r.builder().
+type UserRepository struct {
+	db *sql.DB
+}
+
+var _ auth.UserRepository = (*UserRepository)(nil)
+
+func NewUserRepository(db *sql.DB) *UserRepository {
+	return &UserRepository{db: db}
+}
+
+func (r *UserRepository) Insert(ctx context.Context, user *auth.User) error {
+	_, err := builder(r.db).
 		Insert(tableUsers).
 		Columns(userColumns()...).
 		Values(
@@ -62,8 +72,8 @@ func (r *Repository) InsertUser(ctx context.Context, user *auth.User) error {
 	return nil
 }
 
-func (r *Repository) UpdateUser(ctx context.Context, user *auth.User) error {
-	result, err := r.builder().
+func (r *UserRepository) Update(ctx context.Context, user *auth.User) error {
+	result, err := builder(r.db).
 		Update(tableUsers).
 		Set(userColumnUsername, user.Username).
 		Set(userColumnEmail, nullableString(user.Email)).
@@ -84,8 +94,8 @@ func (r *Repository) UpdateUser(ctx context.Context, user *auth.User) error {
 	return requireOneRow(result, fmt.Errorf("%w: %s", auth.ErrUserNotFound, user.ID))
 }
 
-func (r *Repository) DeleteUser(ctx context.Context, id string) error {
-	result, err := r.builder().
+func (r *UserRepository) Delete(ctx context.Context, id string) error {
+	result, err := builder(r.db).
 		Delete(tableUsers).
 		Where(squirrel.Eq{userColumnID: id}).
 		ExecContext(ctx)
@@ -96,8 +106,8 @@ func (r *Repository) DeleteUser(ctx context.Context, id string) error {
 	return requireOneRow(result, fmt.Errorf("%w: %s", auth.ErrUserNotFound, id))
 }
 
-func (r *Repository) GetUser(ctx context.Context, id string) (*auth.User, error) {
-	row := r.builder().
+func (r *UserRepository) Get(ctx context.Context, id string) (*auth.User, error) {
+	row := builder(r.db).
 		Select(userColumns()...).
 		From(tableUsers).
 		Where(squirrel.Eq{userColumnID: id}).
@@ -106,8 +116,8 @@ func (r *Repository) GetUser(ctx context.Context, id string) (*auth.User, error)
 	return scanUser(row, fmt.Errorf("%w: %s", auth.ErrUserNotFound, id))
 }
 
-func (r *Repository) GetUserByEmail(ctx context.Context, email string) (*auth.User, error) {
-	row := r.builder().
+func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*auth.User, error) {
+	row := builder(r.db).
 		Select(userColumns()...).
 		From(tableUsers).
 		Where(squirrel.Eq{userColumnEmail: email}).
@@ -116,8 +126,8 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (*auth.Us
 	return scanUser(row, fmt.Errorf("%w: %s", auth.ErrUserNotFound, email))
 }
 
-func (r *Repository) GetUserByUsername(ctx context.Context, username string) (*auth.User, error) {
-	row := r.builder().
+func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*auth.User, error) {
+	row := builder(r.db).
 		Select(userColumns()...).
 		From(tableUsers).
 		Where(squirrel.Eq{userColumnUsername: username}).
@@ -126,8 +136,8 @@ func (r *Repository) GetUserByUsername(ctx context.Context, username string) (*a
 	return scanUser(row, fmt.Errorf("%w: %s", auth.ErrUserNotFound, username))
 }
 
-func (r *Repository) ListUsers(ctx context.Context, limit int) ([]auth.User, error) {
-	rows, err := r.builder().
+func (r *UserRepository) List(ctx context.Context, limit int) ([]auth.User, error) {
+	rows, err := builder(r.db).
 		Select(userColumns()...).
 		From(tableUsers).
 		OrderBy(userColumnCreatedAt, userColumnID).
@@ -156,10 +166,10 @@ func (r *Repository) ListUsers(ctx context.Context, limit int) ([]auth.User, err
 	return users, nil
 }
 
-func (r *Repository) CountUsers(ctx context.Context) (int, error) {
+func (r *UserRepository) Count(ctx context.Context) (int, error) {
 	var count int
 
-	err := r.builder().
+	err := builder(r.db).
 		Select("count(*)").
 		From(tableUsers).
 		QueryRowContext(ctx).

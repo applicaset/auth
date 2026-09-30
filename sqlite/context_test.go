@@ -19,10 +19,9 @@ func TestErrorCarriesContextButDoesNotLeakIt(t *testing.T) {
 	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = db.Close() })
 
-	repository, err := sqlite.NewRepository(t.Context(), db)
-	require.NoError(t, err)
+	require.NoError(t, sqlite.Migrate(t.Context(), db))
 
-	_, err = repository.GetUser(t.Context(), "01a0-missing-id")
+	_, err = sqlite.NewUserRepository(db).Get(t.Context(), "01a0-missing-id")
 	require.Error(t, err)
 
 	// Every Classify and web/session.go depend on errors.Is still matching.

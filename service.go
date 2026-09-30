@@ -30,7 +30,10 @@ var (
 )
 
 type Service struct {
-	repository    Repository
+	userRepo      UserRepository
+	sessionRepo   SessionRepository
+	tokenRepo     TokenRepository
+	identityRepo  IdentityRepository
 	passwords     *hash.Registry
 	firstUserHook FirstUserHook
 	sessionTTL    time.Duration
@@ -52,7 +55,13 @@ type Options struct {
 	Logger        *slog.Logger
 }
 
-func NewService(repository Repository, options Options) (*Service, error) {
+func NewService(
+	userRepo UserRepository,
+	sessionRepo SessionRepository,
+	tokenRepo TokenRepository,
+	identityRepo IdentityRepository,
+	options Options,
+) (*Service, error) {
 	if options.SessionTTL <= 0 {
 		return nil, fmt.Errorf("%w: got %s", errInvalidSessionTTL, options.SessionTTL)
 	}
@@ -69,7 +78,10 @@ func NewService(repository Repository, options Options) (*Service, error) {
 	}
 
 	return &Service{
-		repository:    repository,
+		userRepo:      userRepo,
+		sessionRepo:   sessionRepo,
+		tokenRepo:     tokenRepo,
+		identityRepo:  identityRepo,
 		passwords:     passwords,
 		firstUserHook: options.FirstUserHook,
 		sessionTTL:    options.SessionTTL,
@@ -112,7 +124,7 @@ type SessionMeta struct {
 //
 // A verification link goes to the new address. Failing to send it does not fail the registration:
 // the person can ask for another from their settings.
-func (s *Service) Register(ctx context.Context, req RegisterRequest) (*User, error) {
+func (svc *Service) Register(ctx context.Context, req RegisterRequest) (*User, error) {
 	username := NormalizeUsername(req.Username)
 	if err := ValidateUsername(username); err != nil {
 		return nil, err
@@ -123,7 +135,7 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*User, err
 		return nil, err
 	}
 
-	passwordHash, err := s.passwords.Hash(req.Password)
+	passwordHash, err := svc.passwords.Hash(req.Password)
 	if err != nil {
 		return nil, err
 	}
@@ -140,12 +152,12 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*User, err
 		UpdatedAt:    now,
 	}
 
-	if err := s.repository.InsertUser(ctx, user); err != nil {
+	if err := svc.userRepo.Insert(ctx, user); err != nil {
 		return nil, fmt.Errorf("insert user: %w", err)
 	}
 
-	if err := s.SendVerification(ctx, user.ID); err != nil {
-		s.logger.WarnContext(ctx, "send verification after registration",
+	if err := svc.SendVerification(ctx, user.ID); err != nil {
+		svc.logger.WarnContext(ctx, "send verification after registration",
 			slog.String("user_id", user.ID), slog.Any("error", err))
 	}
 
@@ -153,8 +165,8 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*User, err
 }
 
 // Authenticate takes a username or an email address as login.
-func (s *Service) Authenticate(ctx context.Context, login, password string) (*User, error) {
-	user, err := s.userByLogin(ctx, login)
+func (svc *Service) Authenticate(ctx context.Context, login, password string) (*User, error) {
+	user, err := svc.userByLogin(ctx, login)
 	if err == nil && !user.HasPassword() {
 		err = ErrUserNotFound
 	}
@@ -162,7 +174,7 @@ func (s *Service) Authenticate(ctx context.Context, login, password string) (*Us
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
 			// Spend the same work as a real comparison so response time does not reveal the answer.
-			_ = s.passwords.Verify(s.dummyHash, password)
+			_ = svc.passwords.Verify(svc.dummyHash, password)
 
 			return nil, ErrInvalidCredentials
 		}
@@ -170,7 +182,7 @@ func (s *Service) Authenticate(ctx context.Context, login, password string) (*Us
 		return nil, fmt.Errorf("get user by login: %w", err)
 	}
 
-	if err := s.passwords.Verify(user.PasswordHash, password); err != nil {
+	if err := svc.passwords.Verify(user.PasswordHash, password); err != nil {
 		if errors.Is(err, hash.ErrMismatch) {
 			return nil, ErrInvalidCredentials
 		}
@@ -178,21 +190,21 @@ func (s *Service) Authenticate(ctx context.Context, login, password string) (*Us
 		return nil, fmt.Errorf("verify password: %w", err)
 	}
 
-	s.rehashIfNeeded(ctx, user, password)
+	svc.rehashIfNeeded(ctx, user, password)
 
 	return user, nil
 }
 
 // rehashIfNeeded upgrades a hash written by a superseded algorithm. Login is the only moment the
 // plaintext is available. A failure here must not fail the login.
-func (s *Service) rehashIfNeeded(ctx context.Context, user *User, password string) {
-	if !s.passwords.NeedsRehash(user.PasswordHash) {
+func (svc *Service) rehashIfNeeded(ctx context.Context, user *User, password string) {
+	if !svc.passwords.NeedsRehash(user.PasswordHash) {
 		return
 	}
 
-	passwordHash, err := s.passwords.Hash(password)
+	passwordHash, err := svc.passwords.Hash(password)
 	if err != nil {
-		s.logger.WarnContext(
+		svc.logger.WarnContext(
 			ctx,
 			"rehash password",
 			slog.String("user_id", user.ID),
@@ -205,8 +217,8 @@ func (s *Service) rehashIfNeeded(ctx context.Context, user *User, password strin
 	user.PasswordHash = passwordHash
 	user.UpdatedAt = currentTime()
 
-	if err := s.repository.UpdateUser(ctx, user); err != nil {
-		s.logger.WarnContext(
+	if err := svc.userRepo.Update(ctx, user); err != nil {
+		svc.logger.WarnContext(
 			ctx,
 			"store rehashed password",
 			slog.String("user_id", user.ID),
@@ -217,7 +229,7 @@ func (s *Service) rehashIfNeeded(ctx context.Context, user *User, password strin
 
 // CreateSession issues a new token. It is called on every login, so there is no existing session
 // identifier an attacker could have fixed beforehand.
-func (s *Service) CreateSession(
+func (svc *Service) CreateSession(
 	ctx context.Context,
 	userID string,
 	meta SessionMeta,
@@ -230,13 +242,13 @@ func (s *Service) CreateSession(
 		UserID:    userID,
 		TokenHash: hashSessionToken(token),
 		CreatedAt: now,
-		ExpiresAt: now.Add(s.sessionTTL),
+		ExpiresAt: now.Add(svc.sessionTTL),
 		LastSeen:  now,
 		UserAgent: truncate(meta.UserAgent, 512),
 		IP:        truncate(meta.IP, 64),
 	}
 
-	if err := s.repository.InsertSession(ctx, session); err != nil {
+	if err := svc.sessionRepo.Insert(ctx, session); err != nil {
 		return "", nil, fmt.Errorf("insert session: %w", err)
 	}
 
@@ -245,10 +257,10 @@ func (s *Service) CreateSession(
 
 // ResolveSession turns a token into its session and user. An expired session is deleted and
 // reported as absent so a stale cookie heals itself on the next request.
-func (s *Service) ResolveSession(ctx context.Context, token string) (*Session, *User, error) {
+func (svc *Service) ResolveSession(ctx context.Context, token string) (*Session, *User, error) {
 	tokenHash := hashSessionToken(token)
 
-	session, err := s.repository.GetSessionByTokenHash(ctx, tokenHash)
+	session, err := svc.sessionRepo.GetByTokenHash(ctx, tokenHash)
 	if err != nil {
 		return nil, nil, fmt.Errorf("get session: %w", err)
 	}
@@ -256,8 +268,8 @@ func (s *Service) ResolveSession(ctx context.Context, token string) (*Session, *
 	now := currentTime()
 
 	if session.Expired(now) {
-		if err := s.repository.DeleteSessionByTokenHash(ctx, tokenHash); err != nil {
-			s.logger.WarnContext(
+		if err := svc.sessionRepo.DeleteByTokenHash(ctx, tokenHash); err != nil {
+			svc.logger.WarnContext(
 				ctx,
 				"delete expired session",
 				slog.String("session_id", session.ID),
@@ -268,14 +280,14 @@ func (s *Service) ResolveSession(ctx context.Context, token string) (*Session, *
 		return nil, nil, ErrSessionNotFound
 	}
 
-	user, err := s.repository.GetUser(ctx, session.UserID)
+	user, err := svc.userRepo.Get(ctx, session.UserID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("get session user: %w", err)
 	}
 
 	if now.Sub(session.LastSeen) >= touchInterval {
-		if err := s.repository.TouchSession(ctx, session.ID, now); err != nil {
-			s.logger.WarnContext(
+		if err := svc.sessionRepo.Touch(ctx, session.ID, now); err != nil {
+			svc.logger.WarnContext(
 				ctx,
 				"touch session",
 				slog.String("session_id", session.ID),
@@ -287,16 +299,16 @@ func (s *Service) ResolveSession(ctx context.Context, token string) (*Session, *
 	return session, user, nil
 }
 
-func (s *Service) RevokeSession(ctx context.Context, token string) error {
-	if err := s.repository.DeleteSessionByTokenHash(ctx, hashSessionToken(token)); err != nil {
+func (svc *Service) RevokeSession(ctx context.Context, token string) error {
+	if err := svc.sessionRepo.DeleteByTokenHash(ctx, hashSessionToken(token)); err != nil {
 		return fmt.Errorf("delete session: %w", err)
 	}
 
 	return nil
 }
 
-func (s *Service) DeleteExpiredSessions(ctx context.Context) (int64, error) {
-	deleted, err := s.repository.DeleteExpiredSessions(ctx, currentTime())
+func (svc *Service) DeleteExpiredSessions(ctx context.Context) (int64, error) {
+	deleted, err := svc.sessionRepo.DeleteExpired(ctx, currentTime())
 	if err != nil {
 		return 0, fmt.Errorf("delete expired sessions: %w", err)
 	}
@@ -304,8 +316,8 @@ func (s *Service) DeleteExpiredSessions(ctx context.Context) (int64, error) {
 	return deleted, nil
 }
 
-func (s *Service) GetUser(ctx context.Context, id string) (*User, error) {
-	user, err := s.repository.GetUser(ctx, id)
+func (svc *Service) GetUser(ctx context.Context, id string) (*User, error) {
+	user, err := svc.userRepo.Get(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", err)
 	}
@@ -317,15 +329,15 @@ func (s *Service) GetUser(ctx context.Context, id string) (*User, error) {
 //
 // TODO: resources this user created in other services still carry their reference. References are
 // opaque and never dereferenced, so nothing breaks, but an operator may want them reassigned.
-func (s *Service) DeleteUser(ctx context.Context, id string) error {
-	if err := s.repository.DeleteUser(ctx, id); err != nil {
+func (svc *Service) DeleteUser(ctx context.Context, id string) error {
+	if err := svc.userRepo.Delete(ctx, id); err != nil {
 		return fmt.Errorf("delete user: %w", err)
 	}
 
 	return nil
 }
 
-func (s *Service) GetUserByRef(ctx context.Context, userRef string) (*User, error) {
+func (svc *Service) GetUserByRef(ctx context.Context, userRef string) (*User, error) {
 	parsed, err := ref.Parse(userRef)
 	if err != nil {
 		return nil, err
@@ -335,12 +347,12 @@ func (s *Service) GetUserByRef(ctx context.Context, userRef string) (*User, erro
 		return nil, fmt.Errorf("%w: %s is not a user reference", ErrUserNotFound, userRef)
 	}
 
-	return s.GetUser(ctx, parsed.ID)
+	return svc.GetUser(ctx, parsed.ID)
 }
 
 // GetUserByUsername takes the username in any case.
-func (s *Service) GetUserByUsername(ctx context.Context, username string) (*User, error) {
-	user, err := s.repository.GetUserByUsername(ctx, NormalizeUsername(username))
+func (svc *Service) GetUserByUsername(ctx context.Context, username string) (*User, error) {
+	user, err := svc.userRepo.GetByUsername(ctx, NormalizeUsername(username))
 	if err != nil {
 		return nil, fmt.Errorf("get user by username: %w", err)
 	}
@@ -348,12 +360,12 @@ func (s *Service) GetUserByUsername(ctx context.Context, username string) (*User
 	return user, nil
 }
 
-func (s *Service) ListUsers(ctx context.Context, limit int) ([]User, error) {
+func (svc *Service) ListUsers(ctx context.Context, limit int) ([]User, error) {
 	if limit <= 0 || limit > maxUserLimit {
 		limit = maxUserLimit
 	}
 
-	users, err := s.repository.ListUsers(ctx, limit)
+	users, err := svc.userRepo.List(ctx, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list users: %w", err)
 	}
@@ -361,13 +373,13 @@ func (s *Service) ListUsers(ctx context.Context, limit int) ([]User, error) {
 	return users, nil
 }
 
-func (s *Service) UpdateProfile(ctx context.Context, req UpdateProfileRequest) (*User, error) {
+func (svc *Service) UpdateProfile(ctx context.Context, req UpdateProfileRequest) (*User, error) {
 	username := NormalizeUsername(req.Username)
 	if err := ValidateUsername(username); err != nil {
 		return nil, err
 	}
 
-	user, err := s.repository.GetUser(ctx, req.UserID)
+	user, err := svc.userRepo.Get(ctx, req.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", err)
 	}
@@ -376,7 +388,7 @@ func (s *Service) UpdateProfile(ctx context.Context, req UpdateProfileRequest) (
 	user.Name = normalizeName(req.Name)
 	user.UpdatedAt = currentTime()
 
-	if err := s.repository.UpdateUser(ctx, user); err != nil {
+	if err := svc.userRepo.Update(ctx, user); err != nil {
 		return nil, fmt.Errorf("update user: %w", err)
 	}
 
@@ -385,14 +397,14 @@ func (s *Service) UpdateProfile(ctx context.Context, req UpdateProfileRequest) (
 
 // ChangePassword checks the current password only when the account has one. Setting a first
 // password on an account without one relies on the caller having just re-authenticated the person.
-func (s *Service) ChangePassword(ctx context.Context, req ChangePasswordRequest) error {
-	user, err := s.repository.GetUser(ctx, req.UserID)
+func (svc *Service) ChangePassword(ctx context.Context, req ChangePasswordRequest) error {
+	user, err := svc.userRepo.Get(ctx, req.UserID)
 	if err != nil {
 		return fmt.Errorf("get user: %w", err)
 	}
 
 	if user.HasPassword() {
-		if err := s.passwords.Verify(user.PasswordHash, req.CurrentPassword); err != nil {
+		if err := svc.passwords.Verify(user.PasswordHash, req.CurrentPassword); err != nil {
 			if errors.Is(err, hash.ErrMismatch) {
 				return ErrInvalidCredentials
 			}
@@ -401,7 +413,7 @@ func (s *Service) ChangePassword(ctx context.Context, req ChangePasswordRequest)
 		}
 	}
 
-	passwordHash, err := s.passwords.Hash(req.NewPassword)
+	passwordHash, err := svc.passwords.Hash(req.NewPassword)
 	if err != nil {
 		return err
 	}
@@ -409,12 +421,12 @@ func (s *Service) ChangePassword(ctx context.Context, req ChangePasswordRequest)
 	user.PasswordHash = passwordHash
 	user.UpdatedAt = currentTime()
 
-	if err := s.repository.UpdateUser(ctx, user); err != nil {
+	if err := svc.userRepo.Update(ctx, user); err != nil {
 		return fmt.Errorf("update user: %w", err)
 	}
 
 	// Anyone holding a session from before the change loses it. The caller keeps its own.
-	if err := s.repository.DeleteSessionsByUser(ctx, user.ID, req.KeepSessionID); err != nil {
+	if err := svc.sessionRepo.DeleteByUser(ctx, user.ID, req.KeepSessionID); err != nil {
 		return fmt.Errorf("delete other sessions: %w", err)
 	}
 
@@ -422,8 +434,8 @@ func (s *Service) ChangePassword(ctx context.Context, req ChangePasswordRequest)
 }
 
 // SetupOpen reports whether the instance still has no users.
-func (s *Service) SetupOpen(ctx context.Context) (bool, error) {
-	count, err := s.repository.CountUsers(ctx)
+func (svc *Service) SetupOpen(ctx context.Context) (bool, error) {
+	count, err := svc.userRepo.Count(ctx)
 	if err != nil {
 		return false, fmt.Errorf("count users: %w", err)
 	}
@@ -433,8 +445,8 @@ func (s *Service) SetupOpen(ctx context.Context) (bool, error) {
 
 // CompleteSetup creates the first user and hands its reference to the first-user hook. A failing
 // hook removes the user, so setup stays open rather than leaving an account nobody can use.
-func (s *Service) CompleteSetup(ctx context.Context, req RegisterRequest) (*User, error) {
-	open, err := s.SetupOpen(ctx)
+func (svc *Service) CompleteSetup(ctx context.Context, req RegisterRequest) (*User, error) {
+	open, err := svc.SetupOpen(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -443,16 +455,16 @@ func (s *Service) CompleteSetup(ctx context.Context, req RegisterRequest) (*User
 		return nil, ErrSetupClosed
 	}
 
-	user, err := s.Register(ctx, req)
+	user, err := svc.Register(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
 	// Two setup submissions racing past the check above would both succeed with different
 	// usernames. Re-counting after the insert leaves exactly one winner.
-	count, err := s.repository.CountUsers(ctx)
+	count, err := svc.userRepo.Count(ctx)
 	if err != nil || count != 1 {
-		s.rollbackSetup(ctx, user)
+		svc.rollbackSetup(ctx, user)
 
 		if err != nil {
 			return nil, fmt.Errorf("count users: %w", err)
@@ -461,8 +473,8 @@ func (s *Service) CompleteSetup(ctx context.Context, req RegisterRequest) (*User
 		return nil, ErrSetupClosed
 	}
 
-	if err := s.firstUserHook.OnFirstUser(ctx, user.Ref()); err != nil {
-		s.rollbackSetup(ctx, user)
+	if err := svc.firstUserHook.OnFirstUser(ctx, user.Ref()); err != nil {
+		svc.rollbackSetup(ctx, user)
 
 		return nil, fmt.Errorf("run first user hook: %w", err)
 	}
@@ -473,9 +485,9 @@ func (s *Service) CompleteSetup(ctx context.Context, req RegisterRequest) (*User
 // TODO: best-effort, not a transaction. The hook writes to another service, possibly another
 // database, and cross-service transactions are out of scope. A failure here leaves an account with
 // no administrator role for an operator to clean up by hand.
-func (s *Service) rollbackSetup(ctx context.Context, user *User) {
-	if err := s.repository.DeleteUser(ctx, user.ID); err != nil {
-		s.logger.ErrorContext(
+func (svc *Service) rollbackSetup(ctx context.Context, user *User) {
+	if err := svc.userRepo.Delete(ctx, user.ID); err != nil {
+		svc.logger.ErrorContext(
 			ctx,
 			"roll back setup user",
 			slog.String("user_id", user.ID),

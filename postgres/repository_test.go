@@ -3,7 +3,6 @@ package postgres_test
 import (
 	"testing"
 
-	"github.com/applicaset/buildset/auth"
 	"github.com/applicaset/buildset/auth/postgres"
 	"github.com/applicaset/buildset/auth/repotest"
 	"github.com/applicaset/buildset/pkg/pgtest"
@@ -13,12 +12,17 @@ import (
 func TestRepository(t *testing.T) {
 	dsn := pgtest.DSN(t)
 
-	repotest.Run(t, func(t *testing.T) auth.Repository {
+	repotest.Run(t, func(t *testing.T) repotest.Repositories {
 		t.Helper()
 
-		repository, err := postgres.NewRepository(t.Context(), pgtest.Open(t, dsn))
-		require.NoError(t, err)
+		db := pgtest.Open(t, dsn)
+		require.NoError(t, postgres.Migrate(t.Context(), db))
 
-		return repository
+		return repotest.Repositories{
+			User:     postgres.NewUserRepository(db),
+			Session:  postgres.NewSessionRepository(db),
+			Token:    postgres.NewTokenRepository(db),
+			Identity: postgres.NewIdentityRepository(db),
+		}
 	})
 }

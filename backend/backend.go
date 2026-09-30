@@ -1,4 +1,4 @@
-// Package backend is the one place that maps a storage driver to an auth repository.
+// Package backend is the one place that maps a storage driver to auth's repositories.
 package backend
 
 import (
@@ -10,11 +10,39 @@ import (
 	"github.com/applicaset/buildset/pkg/storage"
 )
 
-func New(ctx context.Context, driver string, handle *storage.Handle) (auth.Repository, error) {
+type Repositories struct {
+	User     auth.UserRepository
+	Session  auth.SessionRepository
+	Token    auth.TokenRepository
+	Identity auth.IdentityRepository
+}
+
+// New migrates the schema before returning repositories over it.
+func New(ctx context.Context, driver string, handle *storage.Handle) (*Repositories, error) {
+	db := handle.SQL
+
 	switch driver {
 	case storage.DriverPostgres:
-		return authpostgres.NewRepository(ctx, handle.SQL)
+		if err := authpostgres.Migrate(ctx, db); err != nil {
+			return nil, err
+		}
+
+		return &Repositories{
+			User:     authpostgres.NewUserRepository(db),
+			Session:  authpostgres.NewSessionRepository(db),
+			Token:    authpostgres.NewTokenRepository(db),
+			Identity: authpostgres.NewIdentityRepository(db),
+		}, nil
 	default:
-		return authsqlite.NewRepository(ctx, handle.SQL)
+		if err := authsqlite.Migrate(ctx, db); err != nil {
+			return nil, err
+		}
+
+		return &Repositories{
+			User:     authsqlite.NewUserRepository(db),
+			Session:  authsqlite.NewSessionRepository(db),
+			Token:    authsqlite.NewTokenRepository(db),
+			Identity: authsqlite.NewIdentityRepository(db),
+		}, nil
 	}
 }

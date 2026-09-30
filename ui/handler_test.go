@@ -80,8 +80,7 @@ func newHarness(t *testing.T, providers ...oidc.Config) *harness {
 	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = db.Close() })
 
-	repository, err := authsqlite.NewRepository(t.Context(), db)
-	require.NoError(t, err)
+	require.NoError(t, authsqlite.Migrate(t.Context(), db))
 
 	bcryptAlgorithm, err := hash.NewBcrypt(4)
 	require.NoError(t, err)
@@ -96,14 +95,20 @@ func newHarness(t *testing.T, providers ...oidc.Config) *harness {
 
 	mailer := &mail.Recorder{}
 
-	service, err := auth.NewService(repository, auth.Options{
-		Passwords:     passwords,
-		FirstUserHook: hook,
-		SessionTTL:    time.Hour,
-		Mailer:        mailer,
-		Links:         links,
-		Logger:        slog.New(slog.DiscardHandler),
-	})
+	service, err := auth.NewService(
+		authsqlite.NewUserRepository(db),
+		authsqlite.NewSessionRepository(db),
+		authsqlite.NewTokenRepository(db),
+		authsqlite.NewIdentityRepository(db),
+		auth.Options{
+			Passwords:     passwords,
+			FirstUserHook: hook,
+			SessionTTL:    time.Hour,
+			Mailer:        mailer,
+			Links:         links,
+			Logger:        slog.New(slog.DiscardHandler),
+		},
+	)
 	require.NoError(t, err)
 
 	h := &harness{

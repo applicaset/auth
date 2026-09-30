@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/applicaset/buildset/auth"
 	"github.com/applicaset/buildset/auth/repotest"
 	"github.com/applicaset/buildset/auth/sqlite"
 	"github.com/stretchr/testify/require"
@@ -12,7 +11,7 @@ import (
 )
 
 func TestRepository(t *testing.T) {
-	repotest.Run(t, func(t *testing.T) auth.Repository {
+	repotest.Run(t, func(t *testing.T) repotest.Repositories {
 		t.Helper()
 
 		// Opened with foreign_keys on, like the application's database. SQLite defaults it to off,
@@ -23,9 +22,13 @@ func TestRepository(t *testing.T) {
 		db.SetMaxOpenConns(1)
 		t.Cleanup(func() { _ = db.Close() })
 
-		repository, err := sqlite.NewRepository(t.Context(), db)
-		require.NoError(t, err)
+		require.NoError(t, sqlite.Migrate(t.Context(), db))
 
-		return repository
+		return repotest.Repositories{
+			User:     sqlite.NewUserRepository(db),
+			Session:  sqlite.NewSessionRepository(db),
+			Token:    sqlite.NewTokenRepository(db),
+			Identity: sqlite.NewIdentityRepository(db),
+		}
 	})
 }

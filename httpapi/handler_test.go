@@ -33,8 +33,7 @@ func newService(t *testing.T) *auth.Service {
 	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = db.Close() })
 
-	repository, err := sqlite.NewRepository(t.Context(), db)
-	require.NoError(t, err)
+	require.NoError(t, sqlite.Migrate(t.Context(), db))
 
 	// The lowest cost bcrypt accepts, because these tests create accounts repeatedly.
 	algorithm, err := hash.NewBcrypt(10)
@@ -46,13 +45,19 @@ func newService(t *testing.T) *auth.Service {
 	links, err := ui.NewLinks("http://auth.test")
 	require.NoError(t, err)
 
-	service, err := auth.NewService(repository, auth.Options{
-		Passwords:  passwords,
-		SessionTTL: time.Hour,
-		Mailer:     &mail.Recorder{},
-		Links:      links,
-		Logger:     slog.New(slog.DiscardHandler),
-	})
+	service, err := auth.NewService(
+		sqlite.NewUserRepository(db),
+		sqlite.NewSessionRepository(db),
+		sqlite.NewTokenRepository(db),
+		sqlite.NewIdentityRepository(db),
+		auth.Options{
+			Passwords:  passwords,
+			SessionTTL: time.Hour,
+			Mailer:     &mail.Recorder{},
+			Links:      links,
+			Logger:     slog.New(slog.DiscardHandler),
+		},
+	)
 	require.NoError(t, err)
 
 	return service

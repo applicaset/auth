@@ -34,8 +34,18 @@ func tokenColumns() []string {
 	}
 }
 
-func (r *Repository) InsertToken(ctx context.Context, token *auth.Token) error {
-	_, err := r.builder().
+type TokenRepository struct {
+	db *sql.DB
+}
+
+var _ auth.TokenRepository = (*TokenRepository)(nil)
+
+func NewTokenRepository(db *sql.DB) *TokenRepository {
+	return &TokenRepository{db: db}
+}
+
+func (r *TokenRepository) Insert(ctx context.Context, token *auth.Token) error {
+	_, err := builder(r.db).
 		Insert(tableTokens).
 		Columns(tokenColumns()...).
 		Values(
@@ -54,7 +64,7 @@ func (r *Repository) InsertToken(ctx context.Context, token *auth.Token) error {
 	return nil
 }
 
-func (r *Repository) ConsumeToken(
+func (r *TokenRepository) Consume(
 	ctx context.Context,
 	tokenHash string,
 	purpose auth.TokenPurpose,
@@ -101,12 +111,12 @@ func (r *Repository) ConsumeToken(
 	return &token, nil
 }
 
-func (r *Repository) DeleteTokensByUser(
+func (r *TokenRepository) DeleteByUser(
 	ctx context.Context,
 	userID string,
 	purpose auth.TokenPurpose,
 ) error {
-	_, err := r.builder().
+	_, err := builder(r.db).
 		Delete(tableTokens).
 		Where(squirrel.Eq{tokenColumnUserID: userID, tokenColumnPurpose: string(purpose)}).
 		ExecContext(ctx)
@@ -117,8 +127,8 @@ func (r *Repository) DeleteTokensByUser(
 	return nil
 }
 
-func (r *Repository) DeleteExpiredTokens(ctx context.Context, now time.Time) (int64, error) {
-	result, err := r.builder().
+func (r *TokenRepository) DeleteExpired(ctx context.Context, now time.Time) (int64, error) {
+	result, err := builder(r.db).
 		Delete(tableTokens).
 		Where(squirrel.LtOrEq{tokenColumnExpiresAt: now}).
 		ExecContext(ctx)

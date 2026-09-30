@@ -128,9 +128,9 @@ func build(
 	handle *storage.Handle,
 	logger *slog.Logger,
 ) (*auth.Service, http.Handler, error) {
-	repository, err := backend.New(ctx, cfg.Database.Driver, handle)
+	repos, err := backend.New(ctx, cfg.Database.Driver, handle)
 	if err != nil {
-		return nil, nil, fmt.Errorf("build auth repository: %w", err)
+		return nil, nil, fmt.Errorf("build auth repositories: %w", err)
 	}
 
 	authzClient, err := authzclient.New(cfg.AuthzURL, httpx.ClientOptions{Timeout: cfg.HTTPTimeout})
@@ -140,7 +140,10 @@ func build(
 
 	service, pages, err := kit.Build(kit.Options{
 		Config:        cfg.Auth,
-		Repository:    repository,
+		UserRepo:      repos.User,
+		SessionRepo:   repos.Session,
+		TokenRepo:     repos.Token,
+		IdentityRepo:  repos.Identity,
 		FirstUserHook: firstUserHook(authzClient, cfg.AdminRole, logger),
 		Registration:  registrationPolicy(cfg.Auth.RegistrationOpen, authzClient),
 		Cookie: authui.Config{
@@ -168,14 +171,14 @@ func build(
 	return service, mux, nil
 }
 
-func (s *Service) Routes() http.Handler { return s.routes }
+func (svc *Service) Routes() http.Handler { return svc.routes }
 
-func (s *Service) Ping(ctx context.Context) error { return s.handle.Ping(ctx) }
+func (svc *Service) Ping(ctx context.Context) error { return svc.handle.Ping(ctx) }
 
-func (s *Service) Close() error { return s.handle.Close() }
+func (svc *Service) Close() error { return svc.handle.Close() }
 
 // Sweep deletes expired sessions and tokens until the context is cancelled.
-func (s *Service) Sweep(ctx context.Context) { kit.Sweep(ctx, s.service, s.logger) }
+func (svc *Service) Sweep(ctx context.Context) { kit.Sweep(ctx, svc.service, svc.logger) }
 
 func Run(ctx context.Context) error {
 	cfg, err := LoadConfig(ctx)

@@ -30,8 +30,18 @@ func identityColumns() []string {
 	}
 }
 
-func (r *Repository) InsertIdentity(ctx context.Context, identity *auth.Identity) error {
-	_, err := r.builder().
+type IdentityRepository struct {
+	db *sql.DB
+}
+
+var _ auth.IdentityRepository = (*IdentityRepository)(nil)
+
+func NewIdentityRepository(db *sql.DB) *IdentityRepository {
+	return &IdentityRepository{db: db}
+}
+
+func (r *IdentityRepository) Insert(ctx context.Context, identity *auth.Identity) error {
+	_, err := builder(r.db).
 		Insert(tableIdentities).
 		Columns(identityColumns()...).
 		Values(
@@ -53,11 +63,11 @@ func (r *Repository) InsertIdentity(ctx context.Context, identity *auth.Identity
 	return nil
 }
 
-func (r *Repository) GetIdentity(
+func (r *IdentityRepository) Get(
 	ctx context.Context,
 	provider, subject string,
 ) (*auth.Identity, error) {
-	row := r.builder().
+	row := builder(r.db).
 		Select(identityColumns()...).
 		From(tableIdentities).
 		Where(squirrel.Eq{identityColumnProvider: provider, identityColumnSubject: subject}).
@@ -66,8 +76,11 @@ func (r *Repository) GetIdentity(
 	return scanIdentity(row)
 }
 
-func (r *Repository) ListIdentities(ctx context.Context, userID string) ([]auth.Identity, error) {
-	rows, err := r.builder().
+func (r *IdentityRepository) ListByUser(
+	ctx context.Context,
+	userID string,
+) ([]auth.Identity, error) {
+	rows, err := builder(r.db).
 		Select(identityColumns()...).
 		From(tableIdentities).
 		Where(squirrel.Eq{identityColumnUserID: userID}).
@@ -96,8 +109,8 @@ func (r *Repository) ListIdentities(ctx context.Context, userID string) ([]auth.
 	return identities, nil
 }
 
-func (r *Repository) DeleteIdentity(ctx context.Context, userID, provider, subject string) error {
-	result, err := r.builder().
+func (r *IdentityRepository) Delete(ctx context.Context, userID, provider, subject string) error {
+	result, err := builder(r.db).
 		Delete(tableIdentities).
 		Where(squirrel.Eq{
 			identityColumnUserID:   userID,

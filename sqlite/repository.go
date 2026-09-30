@@ -1,5 +1,5 @@
-// Package sqlite stores auth's users and sessions in SQLite. It owns its schema and migrates
-// itself, so wiring auth to a different backend runs none of this.
+// Package sqlite stores auth's users and sessions in SQLite. It owns its schema, applied by
+// Migrate, so wiring auth to a different backend runs none of this.
 package sqlite
 
 import (
@@ -24,12 +24,7 @@ var migrations embed.FS
 // timeFormat sorts lexicographically, so ordering and range queries work on the stored text.
 const timeFormat = "2006-01-02T15:04:05.000Z"
 
-type Repository struct {
-	db *sql.DB
-}
-
-// NewRepository migrates the schema and returns a repository over it.
-func NewRepository(ctx context.Context, db *sql.DB) (*Repository, error) {
+func Migrate(ctx context.Context, db *sql.DB) error {
 	runner := sqlmigrate.Runner{
 		FileSystem: migrations,
 		Directory:  "migrations",
@@ -37,15 +32,15 @@ func NewRepository(ctx context.Context, db *sql.DB) (*Repository, error) {
 	}
 
 	if err := runner.Up(ctx, db); err != nil {
-		return nil, fmt.Errorf("migrate auth schema: %w", err)
+		return fmt.Errorf("migrate auth schema: %w", err)
 	}
 
-	return &Repository{db: db}, nil
+	return nil
 }
 
 // SQLite takes ? placeholders, squirrel's default, so this is the only place the dialect is named.
-func (r *Repository) builder() squirrel.StatementBuilderType {
-	return squirrel.StatementBuilder.RunWith(r.db)
+func builder(db *sql.DB) squirrel.StatementBuilderType {
+	return squirrel.StatementBuilder.RunWith(db)
 }
 
 type rowScanner interface {
@@ -78,8 +73,6 @@ func formatTime(t time.Time) string {
 func parseTime(value string) (time.Time, error) {
 	return time.Parse(timeFormat, value)
 }
-
-var _ auth.Repository = (*Repository)(nil)
 
 // userConflict names the column a unique violation hit. The driver reports it only in the message,
 // as "UNIQUE constraint failed: users.email".

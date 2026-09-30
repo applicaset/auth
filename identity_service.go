@@ -18,15 +18,15 @@ type ProviderClaims struct {
 // SignInWithProvider returns the account the provider identity belongs to. An identity seen for
 // the first time links to the account with the same address when both sides have proved that
 // address, and otherwise creates an account when allowSignUp is set.
-func (s *Service) SignInWithProvider(
+func (svc *Service) SignInWithProvider(
 	ctx context.Context,
 	provider string,
 	claims ProviderClaims,
 	allowSignUp bool,
 ) (*User, error) {
-	identity, err := s.repository.GetIdentity(ctx, provider, claims.Subject)
+	identity, err := svc.identityRepo.Get(ctx, provider, claims.Subject)
 	if err == nil {
-		user, err := s.repository.GetUser(ctx, identity.UserID)
+		user, err := svc.userRepo.Get(ctx, identity.UserID)
 		if err != nil {
 			return nil, fmt.Errorf("get user of identity: %w", err)
 		}
@@ -41,7 +41,7 @@ func (s *Service) SignInWithProvider(
 	email := NormalizeEmail(claims.Email)
 
 	if email != "" {
-		user, err := s.repository.GetUserByEmail(ctx, email)
+		user, err := svc.userRepo.GetByEmail(ctx, email)
 
 		switch {
 		case err == nil:
@@ -51,7 +51,7 @@ func (s *Service) SignInWithProvider(
 				return nil, ErrAccountExists
 			}
 
-			if err := s.link(ctx, user.ID, provider, claims.Subject, email); err != nil {
+			if err := svc.link(ctx, user.ID, provider, claims.Subject, email); err != nil {
 				return nil, err
 			}
 
@@ -65,10 +65,10 @@ func (s *Service) SignInWithProvider(
 		return nil, ErrSignUpClosed
 	}
 
-	return s.createProviderUser(ctx, provider, claims, email)
+	return svc.createProviderUser(ctx, provider, claims, email)
 }
 
-func (s *Service) createProviderUser(
+func (svc *Service) createProviderUser(
 	ctx context.Context,
 	provider string,
 	claims ProviderClaims,
@@ -96,15 +96,15 @@ func (s *Service) createProviderUser(
 		source = provider
 	}
 
-	created, err := s.createNamedUser(ctx, user, UsernameFromEmail(source))
+	created, err := svc.createNamedUser(ctx, user, UsernameFromEmail(source))
 	if err != nil {
 		return nil, err
 	}
 
 	// TODO: not a transaction. A failure here leaves an account with no way to sign in except an
 	// email link to its verified address. The account is removed to keep that window small.
-	if err := s.link(ctx, created.ID, provider, claims.Subject, email); err != nil {
-		if deleteErr := s.repository.DeleteUser(ctx, created.ID); deleteErr != nil {
+	if err := svc.link(ctx, created.ID, provider, claims.Subject, email); err != nil {
+		if deleteErr := svc.userRepo.Delete(ctx, created.ID); deleteErr != nil {
 			return nil, errors.Join(err, fmt.Errorf("roll back provider user: %w", deleteErr))
 		}
 
@@ -115,14 +115,18 @@ func (s *Service) createProviderUser(
 }
 
 // createNamedUser inserts user under username, adding a numeric suffix while the name is taken.
-func (s *Service) createNamedUser(ctx context.Context, user *User, username string) (*User, error) {
+func (svc *Service) createNamedUser(
+	ctx context.Context,
+	user *User,
+	username string,
+) (*User, error) {
 	for attempt := range derivedUsernameAttempts {
 		user.Username = username
 		if attempt > 0 {
 			user.Username = withNumericSuffix(username)
 		}
 
-		err := s.repository.InsertUser(ctx, user)
+		err := svc.userRepo.Insert(ctx, user)
 		if err == nil {
 			return user, nil
 		}
@@ -135,8 +139,8 @@ func (s *Service) createNamedUser(ctx context.Context, user *User, username stri
 	return nil, fmt.Errorf("insert user: no free username from %q: %w", username, ErrUsernameTaken)
 }
 
-func (s *Service) link(ctx context.Context, userID, provider, subject, email string) error {
-	err := s.repository.InsertIdentity(ctx, &Identity{
+func (svc *Service) link(ctx context.Context, userID, provider, subject, email string) error {
+	err := svc.identityRepo.Insert(ctx, &Identity{
 		Provider:  provider,
 		Subject:   subject,
 		UserID:    userID,
@@ -156,12 +160,12 @@ func (s *Service) link(ctx context.Context, userID, provider, subject, email str
 
 // LinkProvider adds a provider identity to a signed-in account. An identity already on this
 // account is no error; one on another account is.
-func (s *Service) LinkProvider(
+func (svc *Service) LinkProvider(
 	ctx context.Context,
 	userID, provider string,
 	claims ProviderClaims,
 ) error {
-	identity, err := s.repository.GetIdentity(ctx, provider, claims.Subject)
+	identity, err := svc.identityRepo.Get(ctx, provider, claims.Subject)
 	if err == nil {
 		if identity.UserID == userID {
 			return nil
@@ -174,18 +178,18 @@ func (s *Service) LinkProvider(
 		return fmt.Errorf("get identity: %w", err)
 	}
 
-	return s.link(ctx, userID, provider, claims.Subject, NormalizeEmail(claims.Email))
+	return svc.link(ctx, userID, provider, claims.Subject, NormalizeEmail(claims.Email))
 }
 
 // UnlinkProvider refuses to remove the account's last way in: no password, no address an email
 // link can reach, and no other provider.
-func (s *Service) UnlinkProvider(ctx context.Context, userID, provider, subject string) error {
-	user, err := s.repository.GetUser(ctx, userID)
+func (svc *Service) UnlinkProvider(ctx context.Context, userID, provider, subject string) error {
+	user, err := svc.userRepo.Get(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("get user: %w", err)
 	}
 
-	identities, err := s.repository.ListIdentities(ctx, userID)
+	identities, err := svc.identityRepo.ListByUser(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("list identities: %w", err)
 	}
@@ -194,7 +198,7 @@ func (s *Service) UnlinkProvider(ctx context.Context, userID, provider, subject 
 		return ErrLastSignInMethod
 	}
 
-	if err := s.repository.DeleteIdentity(ctx, userID, provider, subject); err != nil {
+	if err := svc.identityRepo.Delete(ctx, userID, provider, subject); err != nil {
 		if errors.Is(err, ErrIdentityNotFound) {
 			return ErrIdentityNotFound
 		}

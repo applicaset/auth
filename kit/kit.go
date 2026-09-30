@@ -139,7 +139,10 @@ func (c Config) Validate() error {
 
 type Options struct {
 	Config        Config
-	Repository    auth.Repository
+	UserRepo      auth.UserRepository
+	SessionRepo   auth.SessionRepository
+	TokenRepo     auth.TokenRepository
+	IdentityRepo  auth.IdentityRepository
 	FirstUserHook auth.FirstUserHook
 	Registration  authui.RegistrationPolicy
 	Cookie        authui.Config
@@ -175,14 +178,20 @@ func Build(options Options) (*auth.Service, *authui.Handler, error) {
 		mailer = mail.New(cfg.Mail, options.Logger)
 	}
 
-	service, err := auth.NewService(options.Repository, auth.Options{
-		Passwords:     passwords,
-		FirstUserHook: options.FirstUserHook,
-		SessionTTL:    cfg.SessionTTL,
-		Mailer:        mailer,
-		Links:         links,
-		Logger:        options.Logger,
-	})
+	service, err := auth.NewService(
+		options.UserRepo,
+		options.SessionRepo,
+		options.TokenRepo,
+		options.IdentityRepo,
+		auth.Options{
+			Passwords:     passwords,
+			FirstUserHook: options.FirstUserHook,
+			SessionTTL:    cfg.SessionTTL,
+			Mailer:        mailer,
+			Links:         links,
+			Logger:        options.Logger,
+		},
+	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("build auth service: %w", err)
 	}

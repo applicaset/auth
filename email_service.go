@@ -37,17 +37,17 @@ const (
 // derivedUsernameAttempts bounds the retries when a username derived from an email is taken.
 const derivedUsernameAttempts = 5
 
-func (s *Service) userByLogin(ctx context.Context, login string) (*User, error) {
+func (svc *Service) userByLogin(ctx context.Context, login string) (*User, error) {
 	if strings.Contains(login, "@") {
-		return s.repository.GetUserByEmail(ctx, NormalizeEmail(login))
+		return svc.userRepo.GetByEmail(ctx, NormalizeEmail(login))
 	}
 
-	return s.repository.GetUserByUsername(ctx, NormalizeUsername(login))
+	return svc.userRepo.GetByUsername(ctx, NormalizeUsername(login))
 }
 
 // GetUserByEmail takes the address in any case.
-func (s *Service) GetUserByEmail(ctx context.Context, email string) (*User, error) {
-	user, err := s.repository.GetUserByEmail(ctx, NormalizeEmail(email))
+func (svc *Service) GetUserByEmail(ctx context.Context, email string) (*User, error) {
+	user, err := svc.userRepo.GetByEmail(ctx, NormalizeEmail(email))
 	if err != nil {
 		return nil, fmt.Errorf("get user by email: %w", err)
 	}
@@ -56,7 +56,7 @@ func (s *Service) GetUserByEmail(ctx context.Context, email string) (*User, erro
 }
 
 // issueToken stores a new token and returns the secret for the link. Only its hash is kept.
-func (s *Service) issueToken(
+func (svc *Service) issueToken(
 	ctx context.Context,
 	purpose TokenPurpose,
 	userID, email string,
@@ -65,7 +65,7 @@ func (s *Service) issueToken(
 	secret := newSessionToken()
 	now := currentTime()
 
-	err := s.repository.InsertToken(ctx, &Token{
+	err := svc.tokenRepo.Insert(ctx, &Token{
 		TokenHash: hashSessionToken(secret),
 		Purpose:   purpose,
 		UserID:    userID,
@@ -80,7 +80,7 @@ func (s *Service) issueToken(
 	return secret, nil
 }
 
-func (s *Service) consumeToken(
+func (svc *Service) consumeToken(
 	ctx context.Context,
 	secret string,
 	purpose TokenPurpose,
@@ -89,7 +89,7 @@ func (s *Service) consumeToken(
 		return nil, ErrTokenNotFound
 	}
 
-	token, err := s.repository.ConsumeToken(ctx, hashSessionToken(secret), purpose, currentTime())
+	token, err := svc.tokenRepo.Consume(ctx, hashSessionToken(secret), purpose, currentTime())
 	if err != nil {
 		if errors.Is(err, ErrTokenNotFound) {
 			return nil, ErrTokenNotFound
@@ -103,8 +103,8 @@ func (s *Service) consumeToken(
 
 // SendVerification mails a link that proves the account's address. An address already verified is
 // left alone.
-func (s *Service) SendVerification(ctx context.Context, userID string) error {
-	user, err := s.repository.GetUser(ctx, userID)
+func (svc *Service) SendVerification(ctx context.Context, userID string) error {
+	user, err := svc.userRepo.Get(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("get user: %w", err)
 	}
@@ -113,31 +113,31 @@ func (s *Service) SendVerification(ctx context.Context, userID string) error {
 		return nil
 	}
 
-	if err := s.repository.DeleteTokensByUser(ctx, user.ID, TokenVerifyEmail); err != nil {
+	if err := svc.tokenRepo.DeleteByUser(ctx, user.ID, TokenVerifyEmail); err != nil {
 		return fmt.Errorf("delete earlier verification tokens: %w", err)
 	}
 
-	secret, err := s.issueToken(ctx, TokenVerifyEmail, user.ID, user.Email, verifyEmailTTL)
+	secret, err := svc.issueToken(ctx, TokenVerifyEmail, user.ID, user.Email, verifyEmailTTL)
 	if err != nil {
 		return err
 	}
 
-	return s.send(ctx, user.Email, "Confirm your email address", fmt.Sprintf(
+	return svc.send(ctx, user.Email, "Confirm your email address", fmt.Sprintf(
 		"Confirm that %s is your email address by opening this link:\n\n%s\n\n"+
-			"The link works once and expires in %s. If you did not create an account, ignore this email.",
-		user.Email, s.links.VerifyEmail(secret), humanDuration(verifyEmailTTL),
+			"The link works once and expires in %svc. If you did not create an account, ignore this email.",
+		user.Email, svc.links.VerifyEmail(secret), humanDuration(verifyEmailTTL),
 	))
 }
 
 // VerifyEmail fails if the account's address changed after the link was sent, since the link
 // proves the old one.
-func (s *Service) VerifyEmail(ctx context.Context, secret string) (*User, error) {
-	token, err := s.consumeToken(ctx, secret, TokenVerifyEmail)
+func (svc *Service) VerifyEmail(ctx context.Context, secret string) (*User, error) {
+	token, err := svc.consumeToken(ctx, secret, TokenVerifyEmail)
 	if err != nil {
 		return nil, err
 	}
 
-	user, err := s.repository.GetUser(ctx, token.UserID)
+	user, err := svc.userRepo.Get(ctx, token.UserID)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
 			return nil, ErrTokenNotFound
@@ -150,10 +150,10 @@ func (s *Service) VerifyEmail(ctx context.Context, secret string) (*User, error)
 		return nil, ErrTokenNotFound
 	}
 
-	return s.markVerified(ctx, user)
+	return svc.markVerified(ctx, user)
 }
 
-func (s *Service) markVerified(ctx context.Context, user *User) (*User, error) {
+func (svc *Service) markVerified(ctx context.Context, user *User) (*User, error) {
 	if user.EmailVerified() {
 		return user, nil
 	}
@@ -162,7 +162,7 @@ func (s *Service) markVerified(ctx context.Context, user *User) (*User, error) {
 	user.EmailVerifiedAt = &now
 	user.UpdatedAt = now
 
-	if err := s.repository.UpdateUser(ctx, user); err != nil {
+	if err := svc.userRepo.Update(ctx, user); err != nil {
 		return nil, fmt.Errorf("mark email verified: %w", err)
 	}
 
@@ -174,13 +174,13 @@ func (s *Service) markVerified(ctx context.Context, user *User) (*User, error) {
 //
 // FIXME: no rate limiting, so anyone can make this send mail to any address repeatedly. It shares
 // the limiter Register is waiting for.
-func (s *Service) RequestPasswordReset(ctx context.Context, email string) error {
+func (svc *Service) RequestPasswordReset(ctx context.Context, email string) error {
 	email = NormalizeEmail(email)
 	if err := ValidateEmail(email); err != nil {
 		return err
 	}
 
-	user, err := s.repository.GetUserByEmail(ctx, email)
+	user, err := svc.userRepo.GetByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
 			return nil
@@ -189,38 +189,38 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string) error 
 		return fmt.Errorf("get user by email: %w", err)
 	}
 
-	if err := s.repository.DeleteTokensByUser(ctx, user.ID, TokenResetPassword); err != nil {
+	if err := svc.tokenRepo.DeleteByUser(ctx, user.ID, TokenResetPassword); err != nil {
 		return fmt.Errorf("delete earlier reset tokens: %w", err)
 	}
 
-	secret, err := s.issueToken(ctx, TokenResetPassword, user.ID, user.Email, resetPasswordTTL)
+	secret, err := svc.issueToken(ctx, TokenResetPassword, user.ID, user.Email, resetPasswordTTL)
 	if err != nil {
 		return err
 	}
 
-	return s.send(ctx, user.Email, "Reset your password", fmt.Sprintf(
-		"Someone asked to reset the password for %s. Choose a new one here:\n\n%s\n\n"+
-			"The link works once and expires in %s. If it was not you, ignore this email; your "+
+	return svc.send(ctx, user.Email, "Reset your password", fmt.Sprintf(
+		"Someone asked to reset the password for %svc. Choose a new one here:\n\n%s\n\n"+
+			"The link works once and expires in %svc. If it was not you, ignore this email; your "+
 			"password has not changed.",
-		user.Username, s.links.ResetPassword(secret), humanDuration(resetPasswordTTL),
+		user.Username, svc.links.ResetPassword(secret), humanDuration(resetPasswordTTL),
 	))
 }
 
 // ResetPassword also verifies the address, since following the link proved it, and signs out
 // every session: whoever knew the old password is out.
-func (s *Service) ResetPassword(ctx context.Context, secret, newPassword string) (*User, error) {
+func (svc *Service) ResetPassword(ctx context.Context, secret, newPassword string) (*User, error) {
 	// Hashed first, so a password the rules reject leaves the link usable for another try.
-	passwordHash, err := s.passwords.Hash(newPassword)
+	passwordHash, err := svc.passwords.Hash(newPassword)
 	if err != nil {
 		return nil, err
 	}
 
-	token, err := s.consumeToken(ctx, secret, TokenResetPassword)
+	token, err := svc.consumeToken(ctx, secret, TokenResetPassword)
 	if err != nil {
 		return nil, err
 	}
 
-	user, err := s.repository.GetUser(ctx, token.UserID)
+	user, err := svc.userRepo.Get(ctx, token.UserID)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
 			return nil, ErrTokenNotFound
@@ -237,15 +237,15 @@ func (s *Service) ResetPassword(ctx context.Context, secret, newPassword string)
 		user.EmailVerifiedAt = &now
 	}
 
-	if err := s.repository.UpdateUser(ctx, user); err != nil {
+	if err := svc.userRepo.Update(ctx, user); err != nil {
 		return nil, fmt.Errorf("update user: %w", err)
 	}
 
-	if err := s.repository.DeleteSessionsByUser(ctx, user.ID, ""); err != nil {
+	if err := svc.sessionRepo.DeleteByUser(ctx, user.ID, ""); err != nil {
 		return nil, fmt.Errorf("delete sessions: %w", err)
 	}
 
-	if err := s.repository.DeleteTokensByUser(ctx, user.ID, TokenResetPassword); err != nil {
+	if err := svc.tokenRepo.DeleteByUser(ctx, user.ID, TokenResetPassword); err != nil {
 		return nil, fmt.Errorf("delete reset tokens: %w", err)
 	}
 
@@ -256,7 +256,7 @@ func (s *Service) ResetPassword(ctx context.Context, secret, newPassword string)
 // when allowSignUp is set, and nothing otherwise. The answer is the same either way.
 //
 // FIXME: no rate limiting, as for RequestPasswordReset.
-func (s *Service) RequestEmailLogin(
+func (svc *Service) RequestEmailLogin(
 	ctx context.Context,
 	email, next string,
 	allowSignUp bool,
@@ -268,7 +268,7 @@ func (s *Service) RequestEmailLogin(
 
 	userID := ""
 
-	user, err := s.repository.GetUserByEmail(ctx, email)
+	user, err := svc.userRepo.GetByEmail(ctx, email)
 
 	switch {
 	case err == nil:
@@ -279,33 +279,33 @@ func (s *Service) RequestEmailLogin(
 		return nil
 	}
 
-	secret, err := s.issueToken(ctx, TokenEmailLogin, userID, email, emailLoginTTL)
+	secret, err := svc.issueToken(ctx, TokenEmailLogin, userID, email, emailLoginTTL)
 	if err != nil {
 		return err
 	}
 
-	return s.send(ctx, email, "Your sign-in link", fmt.Sprintf(
+	return svc.send(ctx, email, "Your sign-in link", fmt.Sprintf(
 		"Open this link to sign in:\n\n%s\n\n"+
-			"The link works once and expires in %s. If you did not ask for it, ignore this email.",
-		s.links.EmailLogin(secret, next), humanDuration(emailLoginTTL),
+			"The link works once and expires in %svc. If you did not ask for it, ignore this email.",
+		svc.links.EmailLogin(secret, next), humanDuration(emailLoginTTL),
 	))
 }
 
 // ConsumeEmailLogin returns the account the link signs in to, creating it for a link that was
 // sent to an address with no account.
-func (s *Service) ConsumeEmailLogin(
+func (svc *Service) ConsumeEmailLogin(
 	ctx context.Context,
 	secret string,
 	allowSignUp bool,
 ) (*User, error) {
-	token, err := s.consumeToken(ctx, secret, TokenEmailLogin)
+	token, err := svc.consumeToken(ctx, secret, TokenEmailLogin)
 	if err != nil {
 		return nil, err
 	}
 
 	// A link addressed to someone without an account may find one: they could have signed up
 	// another way in the minutes since.
-	user, err := s.repository.GetUserByEmail(ctx, token.Email)
+	user, err := svc.userRepo.GetByEmail(ctx, token.Email)
 
 	switch {
 	case err == nil:
@@ -313,7 +313,7 @@ func (s *Service) ConsumeEmailLogin(
 			return nil, ErrTokenNotFound
 		}
 
-		return s.markVerified(ctx, user)
+		return svc.markVerified(ctx, user)
 	case !errors.Is(err, ErrUserNotFound):
 		return nil, fmt.Errorf("get user by email: %w", err)
 	case token.UserID != "" || !allowSignUp:
@@ -323,7 +323,7 @@ func (s *Service) ConsumeEmailLogin(
 
 	now := currentTime()
 
-	return s.createNamedUser(ctx, &User{
+	return svc.createNamedUser(ctx, &User{
 		ID:              uuid.NewV7().String(),
 		Email:           token.Email,
 		EmailVerifiedAt: &now,
@@ -334,13 +334,13 @@ func (s *Service) ConsumeEmailLogin(
 
 // RequestEmailChange mails a confirmation link to the new address. The account keeps its current
 // address until the link is followed, so a typo cannot lock anyone out.
-func (s *Service) RequestEmailChange(ctx context.Context, userID, newEmail string) error {
+func (svc *Service) RequestEmailChange(ctx context.Context, userID, newEmail string) error {
 	email := NormalizeEmail(newEmail)
 	if err := ValidateEmail(email); err != nil {
 		return err
 	}
 
-	user, err := s.repository.GetUser(ctx, userID)
+	user, err := svc.userRepo.Get(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("get user: %w", err)
 	}
@@ -349,35 +349,35 @@ func (s *Service) RequestEmailChange(ctx context.Context, userID, newEmail strin
 		return nil
 	}
 
-	if _, err := s.repository.GetUserByEmail(ctx, email); err == nil {
+	if _, err := svc.userRepo.GetByEmail(ctx, email); err == nil {
 		return fmt.Errorf("%w: %s", ErrEmailTaken, email)
 	} else if !errors.Is(err, ErrUserNotFound) {
 		return fmt.Errorf("get user by email: %w", err)
 	}
 
-	if err := s.repository.DeleteTokensByUser(ctx, user.ID, TokenChangeEmail); err != nil {
+	if err := svc.tokenRepo.DeleteByUser(ctx, user.ID, TokenChangeEmail); err != nil {
 		return fmt.Errorf("delete earlier change tokens: %w", err)
 	}
 
-	secret, err := s.issueToken(ctx, TokenChangeEmail, user.ID, email, changeEmailTTL)
+	secret, err := svc.issueToken(ctx, TokenChangeEmail, user.ID, email, changeEmailTTL)
 	if err != nil {
 		return err
 	}
 
-	return s.send(ctx, email, "Confirm your new email address", fmt.Sprintf(
+	return svc.send(ctx, email, "Confirm your new email address", fmt.Sprintf(
 		"Confirm that %s should become the email address of %s:\n\n%s\n\n"+
-			"The link works once and expires in %s. If you did not ask for this, ignore this email.",
-		email, user.Username, s.links.ConfirmEmailChange(secret), humanDuration(changeEmailTTL),
+			"The link works once and expires in %svc. If you did not ask for this, ignore this email.",
+		email, user.Username, svc.links.ConfirmEmailChange(secret), humanDuration(changeEmailTTL),
 	))
 }
 
-func (s *Service) ConfirmEmailChange(ctx context.Context, secret string) (*User, error) {
-	token, err := s.consumeToken(ctx, secret, TokenChangeEmail)
+func (svc *Service) ConfirmEmailChange(ctx context.Context, secret string) (*User, error) {
+	token, err := svc.consumeToken(ctx, secret, TokenChangeEmail)
 	if err != nil {
 		return nil, err
 	}
 
-	user, err := s.repository.GetUser(ctx, token.UserID)
+	user, err := svc.userRepo.Get(ctx, token.UserID)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
 			return nil, ErrTokenNotFound
@@ -391,15 +391,15 @@ func (s *Service) ConfirmEmailChange(ctx context.Context, secret string) (*User,
 	user.EmailVerifiedAt = &now
 	user.UpdatedAt = now
 
-	if err := s.repository.UpdateUser(ctx, user); err != nil {
+	if err := svc.userRepo.Update(ctx, user); err != nil {
 		return nil, fmt.Errorf("update user: %w", err)
 	}
 
 	return user, nil
 }
 
-func (s *Service) DeleteExpiredTokens(ctx context.Context) (int64, error) {
-	deleted, err := s.repository.DeleteExpiredTokens(ctx, currentTime())
+func (svc *Service) DeleteExpiredTokens(ctx context.Context) (int64, error) {
+	deleted, err := svc.tokenRepo.DeleteExpired(ctx, currentTime())
 	if err != nil {
 		return 0, fmt.Errorf("delete expired tokens: %w", err)
 	}
@@ -407,9 +407,9 @@ func (s *Service) DeleteExpiredTokens(ctx context.Context) (int64, error) {
 	return deleted, nil
 }
 
-func (s *Service) send(ctx context.Context, to, subject, text string) error {
-	if err := s.mailer.Send(ctx, mail.Message{To: to, Subject: subject, Text: text}); err != nil {
-		s.logger.ErrorContext(
+func (svc *Service) send(ctx context.Context, to, subject, text string) error {
+	if err := svc.mailer.Send(ctx, mail.Message{To: to, Subject: subject, Text: text}); err != nil {
+		svc.logger.ErrorContext(
 			ctx,
 			"send mail",
 			slog.String("subject", subject),
@@ -435,8 +435,8 @@ func humanDuration(d time.Duration) string {
 	return fmt.Sprintf("%d minutes", int(d/time.Minute))
 }
 
-func (s *Service) ListIdentities(ctx context.Context, userID string) ([]Identity, error) {
-	identities, err := s.repository.ListIdentities(ctx, userID)
+func (svc *Service) ListIdentities(ctx context.Context, userID string) ([]Identity, error) {
+	identities, err := svc.identityRepo.ListByUser(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list identities: %w", err)
 	}
