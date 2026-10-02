@@ -5,7 +5,7 @@
         "build:css": "tailwindcss -i ./ui/assets/styles/main.css -o ./ui/static/style.min.css --minify"
     },
     "devDependencies": {
-        "@buildset/ui": "file:../ui",
+        "@buildset/ui": "github:applicaset/ui#3fa01f9be7d6d34f14879238c9377f000619696b",
         "@tailwindcss/cli": "^4.3.3"
     }
 }

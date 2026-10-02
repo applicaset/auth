@@ -40,9 +40,6 @@ linters:
     funlen:
       lines: 300
       statements: 150
-    gomoddirectives:
-      # Siblings resolve through ../ inside the repository. Consumers ignore replace directives.
-      replace-local: true
     maintidx:
       under: 15
   exclusions:
