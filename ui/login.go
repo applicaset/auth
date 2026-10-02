@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/applicaset/buildset/auth"
-	"github.com/applicaset/buildset/pkg/safeurl"
+	"github.com/applicaset/auth"
+	"github.com/applicaset/pkg/safeurl"
 )
 
 func (h *Handler) loginForm(w http.ResponseWriter, r *http.Request) {

@@ -13,8 +13,8 @@ import (
 	"time"
 	"uuid"
 
-	"github.com/applicaset/buildset/auth/hash"
-	"github.com/applicaset/buildset/pkg/ref"
+	"github.com/applicaset/auth/hash"
+	"github.com/applicaset/pkg/ref"
 )
 
 const (

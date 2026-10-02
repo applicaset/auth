@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/applicaset/buildset/pkg/asset"
+	"github.com/applicaset/pkg/asset"
 )
 
 //go:embed templates/*.gohtml templates/icons/*.svg

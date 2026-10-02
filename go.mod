@@ -1,11 +1,11 @@
-module github.com/applicaset/buildset/auth
+module github.com/applicaset/auth
 
 go 1.27.1
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
-	github.com/applicaset/buildset/authz v0.0.0
-	github.com/applicaset/buildset/pkg v0.0.0
+	github.com/applicaset/authz v0.0.0
+	github.com/applicaset/pkg v0.0.0
 	github.com/nasermirzaei89/env v1.8.0
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/crypto v0.57.0
@@ -289,6 +289,6 @@ tool (
 	golang.org/x/vuln/cmd/govulncheck
 )
 
-replace github.com/applicaset/buildset/pkg => ../pkg
+replace github.com/applicaset/pkg => ../pkg
 
-replace github.com/applicaset/buildset/authz => ../authz
+replace github.com/applicaset/authz => ../authz

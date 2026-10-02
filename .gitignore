@@ -1,0 +1,16 @@
+# Build output
+bin/
+
+# Local configuration and secrets
+/.env
+
+# SQLite database and its write-ahead log
+*.db
+*.db-shm
+*.db-wal
+
+# Node dependencies
+node_modules/
+
+# Storybook build output
+storybook-static/

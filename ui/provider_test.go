@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/applicaset/buildset/auth/oidc/oidctest"
+	"github.com/applicaset/auth/oidc/oidctest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

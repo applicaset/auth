@@ -9,7 +9,7 @@ import (
 	"fmt"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/applicaset/buildset/pkg/sqlmigrate"
+	"github.com/applicaset/pkg/sqlmigrate"
 )
 
 //go:embed migrations/*.sql

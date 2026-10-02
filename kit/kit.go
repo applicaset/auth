@@ -11,11 +11,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/applicaset/buildset/auth"
-	"github.com/applicaset/buildset/auth/hash"
-	"github.com/applicaset/buildset/auth/oidc"
-	authui "github.com/applicaset/buildset/auth/ui"
-	"github.com/applicaset/buildset/pkg/mail"
+	"github.com/applicaset/auth"
+	"github.com/applicaset/auth/hash"
+	"github.com/applicaset/auth/oidc"
+	authui "github.com/applicaset/auth/ui"
+	"github.com/applicaset/pkg/mail"
 	"github.com/nasermirzaei89/env"
 )
 

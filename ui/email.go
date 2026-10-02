@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/applicaset/buildset/auth"
-	"github.com/applicaset/buildset/pkg/safeurl"
+	"github.com/applicaset/auth"
+	"github.com/applicaset/pkg/safeurl"
 )
 
 // Links in mail open a page with a button rather than acting on GET. Mail scanners and link

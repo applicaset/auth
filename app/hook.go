@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/applicaset/buildset/auth"
-	authui "github.com/applicaset/buildset/auth/ui"
-	authzclient "github.com/applicaset/buildset/authz/client"
-	"github.com/applicaset/buildset/pkg/action"
+	"github.com/applicaset/auth"
+	authui "github.com/applicaset/auth/ui"
+	authzclient "github.com/applicaset/authz/client"
+	"github.com/applicaset/pkg/action"
 )
 
 // The first user's role assignment is the only retried call in this binary, with a long timeout

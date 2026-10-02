@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/applicaset/buildset/auth/oidc"
+	"github.com/applicaset/auth/oidc"
 	"github.com/stretchr/testify/require"
 )
 

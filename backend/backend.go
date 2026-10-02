@@ -4,10 +4,10 @@ package backend
 import (
 	"context"
 
-	"github.com/applicaset/buildset/auth"
-	authpostgres "github.com/applicaset/buildset/auth/postgres"
-	authsqlite "github.com/applicaset/buildset/auth/sqlite"
-	"github.com/applicaset/buildset/pkg/storage"
+	"github.com/applicaset/auth"
+	authpostgres "github.com/applicaset/auth/postgres"
+	authsqlite "github.com/applicaset/auth/sqlite"
+	"github.com/applicaset/pkg/storage"
 )
 
 type Repositories struct {

@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/applicaset/buildset/pkg/safeurl"
+	"github.com/applicaset/pkg/safeurl"
 )
 
 const (

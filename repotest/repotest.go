@@ -9,7 +9,7 @@ import (
 	"time"
 	"uuid"
 
-	"github.com/applicaset/buildset/auth"
+	"github.com/applicaset/auth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

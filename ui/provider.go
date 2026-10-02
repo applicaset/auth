@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/applicaset/buildset/auth"
-	"github.com/applicaset/buildset/auth/oidc"
-	"github.com/applicaset/buildset/pkg/safeurl"
+	"github.com/applicaset/auth"
+	"github.com/applicaset/auth/oidc"
+	"github.com/applicaset/pkg/safeurl"
 )
 
 const pathOAuth = "/oauth"

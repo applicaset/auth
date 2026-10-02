@@ -9,10 +9,10 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/applicaset/buildset/auth"
-	"github.com/applicaset/buildset/pkg/api/authapi"
-	"github.com/applicaset/buildset/pkg/httpx"
-	"github.com/applicaset/buildset/pkg/ref"
+	"github.com/applicaset/auth"
+	"github.com/applicaset/pkg/api/authapi"
+	"github.com/applicaset/pkg/httpx"
+	"github.com/applicaset/pkg/ref"
 )
 
 var errMissingDependency = errors.New("missing dependency")

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/applicaset/buildset/pkg/ref"
+	"github.com/applicaset/pkg/ref"
 )
 
 type User struct {

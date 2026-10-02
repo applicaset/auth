@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/applicaset/buildset/auth/repotest"
-	"github.com/applicaset/buildset/auth/sqlite"
+	"github.com/applicaset/auth/repotest"
+	"github.com/applicaset/auth/sqlite"
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 )
